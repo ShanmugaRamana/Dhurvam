@@ -36,15 +36,38 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Dhurvam AI API", lifespan=lifespan)
 
+
+# Middleware to log raw requests BEFORE FastAPI parses them
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class RawRequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if "/detect" in request.url.path:
+            try:
+                body = await request.body()
+                body_str = body.decode('utf-8') if body else "empty"
+                add_log(f"[RAW_REQUEST] Path: {request.url.path}")
+                add_log(f"[RAW_REQUEST] Body: {body_str[:500]}")
+            except Exception as e:
+                add_log(f"[RAW_REQUEST_ERROR] {e}")
+        response = await call_next(request)
+        return response
+
+app.add_middleware(RawRequestLoggingMiddleware)
+
+
 # CORS logic
 origins = [
     "http://localhost:3000",
-    "http://127.0.0.1:3000"
+    "http://127.0.0.1:3000",
+    "https://hackathon.guvi.in",
+    "*"  # Allow all origins for hackathon
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # Allow all for hackathon
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -75,6 +98,28 @@ app.include_router(detect.router, prefix="", tags=["hackathon"], dependencies=[D
 @app.get("/", dependencies=[Depends(get_api_key)])
 def read_root():
     return {"message": "Server is running"}
+
+
+# Diagnostic endpoint - echoes request back
+from fastapi import Request
+
+@app.post("/echo", dependencies=[Depends(get_api_key)])
+async def echo_request(request: Request):
+    """Echo back the request for debugging hackathon integration."""
+    body = await request.body()
+    try:
+        import json
+        body_json = json.loads(body)
+    except:
+        body_json = body.decode('utf-8')
+    
+    add_log(f"[ECHO] Received request: {body_json}")
+    
+    return {
+        "status": "success",
+        "echo": body_json,
+        "headers": dict(request.headers)
+    }
 
 
 @app.get("/health")
