@@ -1,0 +1,454 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Courier New', monospace;
+    background-color: #fff;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Main 3-column layout */
+.app-layout {
+    display: flex;
+    height: 100vh;
+    border: 2px solid #ccc;
+}
+
+/* Left: Session Panel */
+.session-panel {
+    width: 280px;
+    background: #f5f5f5;
+    border-right: 2px solid #ccc;
+    display: flex;
+    flex-direction: column;
+    transition: width 0.3s ease;
+    overflow: hidden;
+}
+
+.session-panel.collapsed {
+    width: 50px;
+}
+
+.session-panel.collapsed .panel-header h3,
+.session-panel.collapsed .new-session-btn,
+.session-panel.collapsed .session-list {
+    display: none;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 2px solid #ccc;
+    background: #fff;
+}
+
+.panel-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: bold;
+}
+
+.collapse-btn {
+    background: transparent;
+    border: none;
+    color: #000;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 5px 8px;
+    font-family: 'Courier New', monospace;
+}
+
+.collapse-btn:hover {
+    background: #f0f0f0;
+}
+
+.new-session-btn {
+    margin: 1rem;
+    padding: 10px;
+    background: #fff;
+    color: #000;
+    border: 2px solid #ccc;
+    cursor: pointer;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+}
+
+.new-session-btn:hover {
+    background: #000;
+    color: #fff;
+}
+
+.session-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 0.5rem;
+}
+
+.session-list h4 {
+    padding: 0.5rem;
+    color: #333;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    margin-top: 0.5rem;
+    border-bottom: 1px solid #ccc;
+}
+
+.session-card {
+    background: #fff;
+    border: 1px solid #ccc;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+}
+
+.session-card:hover {
+    background: #f0f0f0;
+}
+
+.session-card.selected {
+    border: 2px solid #666;
+    background: #e8e8e8;
+}
+
+.session-card.ended {
+    opacity: 0.7;
+}
+
+.session-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    font-size: 0.85rem;
+}
+
+.session-id {
+    font-size: 0.8rem;
+}
+
+.session-badge {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border: 1px solid #ccc;
+    text-transform: uppercase;
+}
+
+.session-badge.active {
+    background: #000;
+    color: #fff;
+}
+
+.session-badge.ended {
+    background: #fff;
+    color: #000;
+}
+
+.view-output-btn {
+    width: 100%;
+    margin-top: 8px;
+    padding: 6px;
+    background: #fff;
+    color: #000;
+    border: 1px solid #ccc;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-family: 'Courier New', monospace;
+}
+
+.view-output-btn:hover {
+    background: #000;
+    color: #fff;
+}
+
+.no-sessions {
+    color: #666;
+    font-size: 0.85rem;
+    padding: 0.5rem;
+    text-align: center;
+}
+
+/* Center: Main Panel */
+.main-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-right: 2px solid #ccc;
+}
+
+.brand-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: #fff;
+    border-bottom: 2px solid #ccc;
+}
+
+.brand-title {
+    font-size: 1.4rem;
+    font-weight: bold;
+}
+
+#logoutBtn {
+    padding: 8px 16px;
+    background: #fff;
+    border: 2px solid #ccc;
+    color: #000;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+}
+
+#logoutBtn:hover {
+    background: #000;
+    color: #fff;
+}
+
+.session-header {
+    padding: 0.75rem 1rem;
+    background: #f5f5f5;
+    border-bottom: 1px solid #ccc;
+    font-size: 0.9rem;
+    color: #000;
+}
+
+.conversation-display {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    background: #fff;
+}
+
+.msg {
+    padding: 8px 12px;
+    margin: 6px 0;
+    border: 1px solid #ccc;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.msg-scammer {
+    background: #fff;
+    border-left: 3px solid #000;
+}
+
+.msg-agent {
+    background: #f5f5f5;
+    border-left: 3px solid #000;
+}
+
+.chat-container {
+    display: flex;
+    gap: 8px;
+    padding: 1rem;
+    border-top: 2px solid #ccc;
+    background: #fff;
+}
+
+#channelSelect {
+    padding: 10px;
+    border: 2px solid #ccc;
+    font-size: 0.9rem;
+    font-family: 'Courier New', monospace;
+    background: #fff;
+}
+
+#chatInput {
+    flex: 1;
+    padding: 10px;
+    border: 2px solid #ccc;
+    font-size: 1rem;
+    font-family: 'Courier New', monospace;
+    background: #fff;
+}
+
+#chatInput:focus {
+    outline: none;
+    border-color: #666;
+}
+
+#sendBtn {
+    padding: 10px 20px;
+    background: #000;
+    color: #fff;
+    border: 2px solid #ccc;
+    cursor: pointer;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+}
+
+#sendBtn:hover {
+    background: #fff;
+    color: #000;
+}
+
+/* Right: Logs Panel */
+.logs-panel {
+    width: 450px;
+    display: flex;
+    flex-direction: column;
+    background: #f5f5f5;
+}
+
+.log-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-bottom: 2px solid #ccc;
+}
+
+.log-section:last-child {
+    border-bottom: none;
+}
+
+.log-section h2 {
+    padding: 0.75rem 1rem;
+    margin: 0;
+    font-size: 0.9rem;
+    background: #fff;
+    border-bottom: 2px solid #ccc;
+    font-weight: bold;
+}
+
+.log-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    background: #fff;
+}
+
+.log-entry {
+    padding: 2px 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #000;
+}
+
+.log-success {
+    color: #000;
+    font-weight: bold;
+}
+
+.log-warning {
+    color: #666;
+}
+
+.log-error {
+    color: #000;
+    text-decoration: underline;
+}
+
+.log-info {
+    color: #333;
+}
+
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background-color: #fff;
+    padding: 2rem;
+    border: 3px solid #ccc;
+    max-width: 700px;
+    width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+}
+
+.modal-close {
+    float: right;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #000;
+    font-weight: bold;
+}
+
+.modal-close:hover {
+    color: #666;
+}
+
+.modal-content h2 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #000;
+    border-bottom: 2px solid #ccc;
+    padding-bottom: 0.5rem;
+    font-weight: bold;
+}
+
+.modal-content h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    color: #000;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 0.25rem;
+    font-weight: bold;
+}
+
+.modal-content ul {
+    list-style: none;
+    padding: 0;
+}
+
+.modal-content li {
+    padding: 6px 0;
+    border-bottom: 1px solid #ccc;
+    font-size: 0.9rem;
+}
+
+.modal-conversation {
+    max-height: 200px;
+    overflow-y: auto;
+    background: #f5f5f5;
+    border: 2px solid #ccc;
+    padding: 0.5rem;
+}
+
+.modal-msg {
+    padding: 6px 10px;
+    margin: 4px 0;
+    border: 1px solid #ccc;
+    font-size: 0.85rem;
+}
+
+.modal-content button {
+    margin-top: 1.5rem;
+    width: 100%;
+    padding: 12px;
+    background: #000;
+    color: #fff;
+    border: 2px solid #ccc;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+}
+
+.modal-content button:hover {
+    background: #fff;
+    color: #000;
+}

@@ -1,6 +1,9 @@
 fastapi
 uvicorn
 python-dotenv
+pydantic
 google-generativeai
+mistralai
+motor
 groq
 openai

@@ -1,0 +1,50 @@
+from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+
+from .api.routes import auth, detect, logs
+from app.core.security import get_api_key
+from app.core.database import connect_db, close_db
+from app.core.logger import add_log
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup and shutdown events."""
+    # Startup
+    add_log("Starting Dhurvam AI API server...")
+    try:
+        await connect_db()
+    except Exception as e:
+        add_log(f"FATAL: Could not connect to MongoDB. Exiting. Error: {str(e)}")
+        raise
+    yield
+    # Shutdown
+    await close_db()
+    add_log("Server shutdown complete.")
+
+
+app = FastAPI(title="Dhurvam AI API", lifespan=lifespan)
+
+# CORS logic
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth.router, prefix="/api/honeypot", tags=["auth"], dependencies=[Depends(get_api_key)])
+app.include_router(detect.router, prefix="/api/honeypot", tags=["detect"], dependencies=[Depends(get_api_key)])
+app.include_router(logs.router, prefix="/api/honeypot", tags=["logs"], dependencies=[Depends(get_api_key)])
+
+
+@app.get("/", dependencies=[Depends(get_api_key)])
+def read_root():
+    return {"message": "Server is running"}
