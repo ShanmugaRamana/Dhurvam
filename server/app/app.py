@@ -1,6 +1,8 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import json
+import time
 
 from .api.routes import auth, detect, logs
 from app.core.security import get_api_key
@@ -43,15 +45,40 @@ from starlette.requests import Request as StarletteRequest
 
 class RawRequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
-        if "/detect" in request.url.path:
+        # Log ALL requests, not just /detect
+        try:
+            # Log request details
+            add_log(f"[RAW_REQUEST] Method: {request.method}")
+            add_log(f"[RAW_REQUEST] Path: {request.url.path}")
+            add_log(f"[RAW_REQUEST] Query: {request.url.query}")
+            add_log(f"[RAW_REQUEST] Client: {request.client.host if request.client else 'unknown'}")
+            
+            # Log all headers
+            headers_dict = dict(request.headers)
+            add_log(f"[RAW_REQUEST_HEADERS] {json.dumps(headers_dict, indent=2)}")
+            
+            # Log body
+            body = await request.body()
+            body_str = body.decode('utf-8') if body else "empty"
+            add_log(f"[RAW_REQUEST_BODY] {body_str}")
+            
+            # Try to parse as JSON
             try:
-                body = await request.body()
-                body_str = body.decode('utf-8') if body else "empty"
-                add_log(f"[RAW_REQUEST] Path: {request.url.path}")
-                add_log(f"[RAW_REQUEST] Body: {body_str[:500]}")
-            except Exception as e:
-                add_log(f"[RAW_REQUEST_ERROR] {e}")
+                body_json = json.loads(body_str)
+                add_log(f"[RAW_REQUEST_BODY_JSON] {json.dumps(body_json, indent=2)}")
+            except json.JSONDecodeError:
+                add_log(f"[RAW_REQUEST_BODY_NOT_JSON] Body is not valid JSON")
+                
+        except Exception as e:
+            add_log(f"[RAW_REQUEST_ERROR] {str(e)}")
+            import traceback
+            add_log(f"[RAW_REQUEST_TRACEBACK] {traceback.format_exc()}")
+        
         response = await call_next(request)
+        
+        # Log response
+        add_log(f"[RAW_RESPONSE] Status: {response.status_code}")
+        
         return response
 
 app.add_middleware(RawRequestLoggingMiddleware)
@@ -100,12 +127,12 @@ def read_root():
     return {"message": "Server is running"}
 
 
-# Diagnostic endpoint - echoes request back
+# Diagnostic endpoint - echoes request back (NO AUTH for debugging)
 from fastapi import Request
 
-@app.post("/echo", dependencies=[Depends(get_api_key)])
+@app.post("/echo")
 async def echo_request(request: Request):
-    """Echo back the request for debugging hackathon integration."""
+    """Echo back the request for debugging hackathon integration (no auth required)."""
     body = await request.body()
     try:
         import json
@@ -119,6 +146,37 @@ async def echo_request(request: Request):
         "status": "success",
         "echo": body_json,
         "headers": dict(request.headers)
+    }
+
+# Public debug endpoint for hackathon testing
+@app.post("/debug")
+async def debug_request(request: Request):
+    """Debug endpoint that shows full request details (no auth required)."""
+    body = await request.body()
+    body_str = body.decode('utf-8') if body else "empty"
+    
+    try:
+        body_json = json.loads(body_str)
+    except json.JSONDecodeError:
+        body_json = None
+    
+    headers_dict = dict(request.headers)
+    
+    add_log(f"[DEBUG] Method: {request.method}")
+    add_log(f"[DEBUG] Path: {request.url.path}")
+    add_log(f"[DEBUG] Headers: {json.dumps(headers_dict, indent=2)}")
+    add_log(f"[DEBUG] Body: {body_str}")
+    
+    return {
+        "status": "success",
+        "request": {
+            "method": request.method,
+            "path": request.url.path,
+            "query": request.url.query,
+            "headers": headers_dict,
+            "body_raw": body_str,
+            "body_json": body_json
+        }
     }
 
 

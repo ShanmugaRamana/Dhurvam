@@ -75,11 +75,10 @@ async def start_orchestration(session_id: str, message_text: str, metadata: dict
         await db.scam_sessions.insert_one(session)
         add_log(f"[ORCHESTRATOR] Session created: {session_id}")
     
+    # Return only fields expected by hackathon portal
     return {
         "status": "success",
-        "reply": reply,
-        "sessionActive": True,
-        "sessionId": session_id
+        "reply": reply
     }
 
 
@@ -150,13 +149,22 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
         
         add_log(f"[ORCHESTRATOR] Session ended: {session_id}")
         
-        return {
-            "status": "ended",
+        # Submit final result to GUVI
+        from app.core.guvi_client import submit_final_result
+        import asyncio
+        final_result = {
             "sessionId": session_id,
             "scamDetected": True,
             "totalMessagesExchanged": session["totalMessages"],
             "extractedIntelligence": session["extractedIntelligence"],
             "agentNotes": notes
+        }
+        asyncio.create_task(submit_final_result(final_result))
+        
+        # Return only fields expected by hackathon portal
+        return {
+            "status": "success",
+            "reply": reply
         }
     
     # Continue session
@@ -175,10 +183,10 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
     
     add_log(f"[ORCHESTRATOR] Session continues: {session_id}, messages: {session['totalMessages']}")
     
+    # Return only fields expected by hackathon portal
     return {
         "status": "success",
-        "reply": reply,
-        "sessionActive": True
+        "reply": reply
     }
 
 
