@@ -251,8 +251,7 @@ async def detect_scam(request: DetectRequest):
             
             return {
                 "status": "success",
-                "classification": "Human",
-                "sessionClosed": True
+                "reply": "Thank you for your message."
             }
         else:
             # Scammer → Start orchestration
