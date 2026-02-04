@@ -252,12 +252,17 @@ async def detect_scam(request: DetectRequest):
             import asyncio
             asyncio.create_task(submit_final_result(human_data))
             
-            return {
+            # Return only the fields expected by hackathon portal
+            response = {
                 "status": "success",
-                "reply": "Thank you for your message.",
-                "classification": "Human",
-                "sessionClosed": True
+                "reply": "Thank you for your message."
             }
+            
+            # DEBUG: Log response being sent
+            import json
+            add_log(f"[RESPONSE] Sending response: {json.dumps(response, indent=2)}")
+            
+            return response
         else:
             # Scammer → Start orchestration
             add_log(f"[ORCHESTRATE] Starting orchestration for: {session_id}")
@@ -275,7 +280,7 @@ async def detect_scam(request: DetectRequest):
             
             # DEBUG: Log response being sent
             import json
-            add_log(f"[DEBUG_RESPONSE] Sending: {json.dumps(result, default=str)}")
+            add_log(f"[RESPONSE] Sending response: {json.dumps(result, indent=2)}")
             
             return result
 
@@ -283,22 +288,34 @@ async def detect_scam(request: DetectRequest):
         error_time = (time.time() - start_time) * 1000
         error_msg = f"Validation error: {str(ve)}"
         add_log(f"[ERROR] {error_msg} after {error_time:.2f}ms")
-        return {
+        
+        # Return only fields expected by hackathon portal
+        response = {
             "status": "error",
-            "error": "validation_error",
-            "message": error_msg,
-            "sessionClosed": True
+            "reply": error_msg
         }
+        
+        # DEBUG: Log response being sent
+        import json
+        add_log(f"[RESPONSE] Sending error response: {json.dumps(response, indent=2)}")
+        
+        return response
     except Exception as e:
         error_time = (time.time() - start_time) * 1000
         error_msg = f"Unexpected error: {str(e)}"
         add_log(f"[ERROR] {str(e)} after {error_time:.2f}ms")
-        return {
+        
+        # Return only fields expected by hackathon portal
+        response = {
             "status": "error",
-            "error": "internal_error",
-            "message": error_msg,
-            "sessionClosed": True
+            "reply": error_msg
         }
+        
+        # DEBUG: Log response being sent
+        import json
+        add_log(f"[RESPONSE] Sending error response: {json.dumps(response, indent=2)}")
+        
+        return response
 
 
 @router.get("/sessions")
