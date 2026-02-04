@@ -246,12 +246,22 @@ async def detect_scam(request: DetectRequest):
         error_time = (time.time() - start_time) * 1000
         error_msg = f"Validation error: {str(ve)}"
         add_log(f"[ERROR] {error_msg} after {error_time:.2f}ms")
-        raise HTTPException(status_code=400, detail=error_msg)
+        return {
+            "status": "error",
+            "error": "validation_error",
+            "message": error_msg,
+            "sessionClosed": True
+        }
     except Exception as e:
         error_time = (time.time() - start_time) * 1000
-        error_msg = f"Unexpected error: {str(e)}\n{traceback.format_exc()}"
+        error_msg = f"Unexpected error: {str(e)}"
         add_log(f"[ERROR] {str(e)} after {error_time:.2f}ms")
-        raise HTTPException(status_code=500, detail=error_msg)
+        return {
+            "status": "error",
+            "error": "internal_error",
+            "message": error_msg,
+            "sessionClosed": True
+        }
 
 
 @router.get("/sessions")
