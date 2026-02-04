@@ -68,6 +68,9 @@ app.include_router(auth.router, prefix="/api/honeypot", tags=["auth"], dependenc
 app.include_router(detect.router, prefix="/api/honeypot", tags=["detect"], dependencies=[Depends(get_api_key)])
 app.include_router(logs.router, prefix="/api/honeypot", tags=["logs"], dependencies=[Depends(get_api_key)])
 
+# Also expose /detect directly for hackathon compatibility
+app.include_router(detect.router, prefix="", tags=["hackathon"], dependencies=[Depends(get_api_key)])
+
 
 @app.get("/", dependencies=[Depends(get_api_key)])
 def read_root():

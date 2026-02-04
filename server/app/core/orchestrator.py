@@ -77,7 +77,9 @@ async def start_orchestration(session_id: str, message_text: str, metadata: dict
     
     return {
         "status": "success",
-        "reply": reply
+        "reply": reply,
+        "sessionActive": True,
+        "sessionId": session_id
     }
 
 
@@ -175,7 +177,8 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
     
     return {
         "status": "success",
-        "reply": reply
+        "reply": reply,
+        "sessionActive": True
     }
 
 
