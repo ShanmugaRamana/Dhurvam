@@ -48,3 +48,26 @@ app.include_router(logs.router, prefix="/api/honeypot", tags=["logs"], dependenc
 @app.get("/", dependencies=[Depends(get_api_key)])
 def read_root():
     return {"message": "Server is running"}
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker and monitoring (no auth required)."""
+    from datetime import datetime
+    from app.core.database import get_database
+    
+    # Check database connection
+    db_status = "healthy"
+    try:
+        db = get_database()
+        if db is None:
+            db_status = "disconnected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    
+    return {
+        "status": "healthy",
+        "service": "dhurvam-honeypot-api",
+        "database": db_status,
+        "timestamp": datetime.utcnow().isoformat()
+    }
