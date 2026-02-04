@@ -10,6 +10,7 @@ MONGODB_URL = os.getenv("MONGODB_URL")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+GUVI_ENDPOINT = os.getenv("GUVI_ENDPOINT")
 
 if not API_KEY:
     raise ValueError("API_KEY not found in environment variables")
@@ -25,3 +26,5 @@ if not GROQ_API_KEY:
     raise ValueError("GROQ_API_KEY not found in environment variables")
 if not OPENROUTER_API_KEY:
     raise ValueError("OPENROUTER_API_KEY not found in environment variables")
+if not GUVI_ENDPOINT:
+    raise ValueError("GUVI_ENDPOINT not found in environment variables")

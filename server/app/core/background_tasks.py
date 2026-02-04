@@ -94,6 +94,13 @@ async def check_inactive_sessions():
                     
                     add_log(f"[AUTO_TIMEOUT] Session {session_id} closed successfully")
                     
+                    # MANDATORY: Submit final results to GUVI hackathon endpoint
+                    add_log(f"[AUTO_TIMEOUT] Submitting results to GUVI for session: {session_id}")
+                    final_session = await db.scam_sessions.find_one({"sessionId": session_id})
+                    
+                    from app.core.guvi_client import submit_final_result
+                    asyncio.create_task(submit_final_result(final_session))
+                    
         except Exception as e:
             add_log(f"[AUTO_TIMEOUT_ERROR] Background task error: {str(e)}")
             await asyncio.sleep(10)  # Wait a bit before retrying

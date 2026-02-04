@@ -220,6 +220,26 @@ async def detect_scam(request: DetectRequest):
             total_time = (time.time() - start_time) * 1000
             add_log(f"[COMPLETE] Human detected. Total: {total_time:.2f}ms")
             
+            # MANDATORY: Submit Human detection to GUVI
+            add_log(f"[HUMAN_DETECT] Submitting to GUVI for session: {session_id}")
+            human_data = {
+                "sessionId": session_id,
+                "scamDetected": False,
+                "totalMessages": 1,
+                "extractedIntelligence": {
+                    "bankAccounts": [],
+                    "upiIds": [],
+                    "phishingLinks": [],
+                    "phoneNumbers": [],
+                    "suspiciousKeywords": []
+                },
+                "agentNotes": "Legitimate message detected, no scam intent"
+            }
+            
+            from app.core.guvi_client import submit_final_result
+            import asyncio
+            asyncio.create_task(submit_final_result(human_data))
+            
             return {
                 "status": "success",
                 "classification": "Human",
@@ -467,10 +487,17 @@ Your summary:"""
     
     add_log(f"[TIMEOUT] Session {session_id} ended due to timeout")
     
-    # Get updated session
-    updated_session = await db.scam_sessions.find_one({"sessionId": session_id})
+    # Get final session data for GUVI submission
+    final_session = await db.scam_sessions.find_one({"sessionId": session_id})
     
-    return {
+    # MANDATORY: Submit final results to GUVI hackathon endpoint
+    add_log(f"[TIMEOUT] Submitting results to GUVI for session: {session_id}")
+    from app.core.guvi_client import submit_final_result
+    import asyncio
+    asyncio.create_task(submit_final_result(final_session))
+    
+    # Prepare final output
+    final_output = {
         "status": "ended",
         "sessionId": session_id,
         "scamDetected": True,
