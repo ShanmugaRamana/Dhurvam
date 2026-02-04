@@ -192,6 +192,9 @@ Classification:"""
 async def detect_scam(request: DetectRequest):
     start_time = time.time()
     
+    # DEBUG: Log incoming request
+    add_log(f"[DEBUG] Request received - sessionId: {request.sessionId}, channel: {request.metadata.channel}")
+    
     try:
         session_id = request.sessionId
         message_text = request.message.text

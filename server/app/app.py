@@ -50,6 +50,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Global exception handler for debugging
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    from app.core.logger import add_log
+    add_log(f"[VALIDATION_ERROR] Request validation failed: {exc}")
+    add_log(f"[VALIDATION_ERROR] Request body: {await request.body()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": exc.body}
+    )
+
 app.include_router(auth.router, prefix="/api/honeypot", tags=["auth"], dependencies=[Depends(get_api_key)])
 app.include_router(detect.router, prefix="/api/honeypot", tags=["detect"], dependencies=[Depends(get_api_key)])
 app.include_router(logs.router, prefix="/api/honeypot", tags=["logs"], dependencies=[Depends(get_api_key)])
