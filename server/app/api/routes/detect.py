@@ -21,12 +21,18 @@ class Message(BaseModel):
     sender: str
     text: str
     timestamp: int
+    
+    class Config:
+        extra = "allow"  # Allow extra fields from hackathon platform
 
 
 class Metadata(BaseModel):
     channel: str
     language: str = "English"
     locale: str = "IN"
+    
+    class Config:
+        extra = "allow"  # Allow extra fields from hackathon platform
 
 
 class DetectRequest(BaseModel):
@@ -34,6 +40,9 @@ class DetectRequest(BaseModel):
     message: Message
     conversationHistory: List[dict] = []
     metadata: Metadata
+    
+    class Config:
+        extra = "allow"  # Allow extra fields from hackathon platform
 
 
 async def detect_with_mistral(message_text: str, conversation_history: list, channel: str) -> str:
