@@ -47,6 +47,26 @@ async def check_inactive_sessions():
                     session_id = session["sessionId"]
                     add_log(f"[AUTO_TIMEOUT] Session {session_id} inactive for {int(inactive_seconds)}s, closing...")
                     
+                    # ATOMIC: Update status immediately to prevent duplicate processing
+                    # Use findOneAndUpdate to atomically change status only if still active
+                    result = await db.scam_sessions.find_one_and_update(
+                        {
+                            "sessionId": session_id,
+                            "status": "active"  # Only update if still active
+                        },
+                        {
+                            "$set": {
+                                "status": "processing_timeout",  # Temporary status to prevent duplicates
+                                "timeoutStartedAt": now_utc
+                            }
+                        }
+                    )
+                    
+                    # If result is None, another task already started processing this session
+                    if result is None:
+                        add_log(f"[AUTO_TIMEOUT] Session {session_id} already being processed, skipping...")
+                        continue
+                    
                     # Generate summary notes
                     from openai import OpenAI
                     from app.core.config import OPENROUTER_API_KEY
@@ -81,7 +101,7 @@ async def check_inactive_sessions():
                         add_log(f"[AUTO_TIMEOUT_ERROR] Failed to generate notes: {str(e)}")
                         agent_notes = f"Session auto-closed after {int(inactive_seconds)} seconds of inactivity."
                     
-                    # Close the session
+                    # Close the session (final update)
                     await db.scam_sessions.update_one(
                         {"sessionId": session_id},
                         {"$set": {
