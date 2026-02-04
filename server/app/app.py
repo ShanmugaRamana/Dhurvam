@@ -18,8 +18,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         add_log(f"FATAL: Could not connect to MongoDB. Exiting. Error: {str(e)}")
         raise
+    
+    # Start background task for auto-timeout
+    import asyncio
+    from app.core.background_tasks import check_inactive_sessions
+    timeout_task = asyncio.create_task(check_inactive_sessions())
+    add_log("Background task: Auto-timeout checker started")
+    
     yield
+    
     # Shutdown
+    timeout_task.cancel()
+    add_log("Background task: Auto-timeout checker stopped")
     await close_db()
     add_log("Server shutdown complete.")
 
@@ -53,8 +63,11 @@ def read_root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint for Docker and monitoring (no auth required)."""
-    from datetime import datetime
+    from datetime import datetime, timezone, timedelta
     from app.core.database import get_database
+    
+    # Indian Standard Time
+    IST = timezone(timedelta(hours=5, minutes=30))
     
     # Check database connection
     db_status = "healthy"
@@ -69,5 +82,6 @@ async def health_check():
         "status": "healthy",
         "service": "dhurvam-honeypot-api",
         "database": db_status,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(IST).isoformat(),
+        "timezone": "IST (UTC+5:30)"
     }

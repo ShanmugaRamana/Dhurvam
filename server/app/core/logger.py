@@ -1,11 +1,14 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List
+
+# Indian Standard Time (UTC+5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 logs: List[str] = []
 
 def add_log(message: str):
-    """Add a timestamped log entry."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    """Add a timestamped log entry in IST."""
+    timestamp = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
     log_entry = f"[{timestamp}] {message}"
     logs.append(log_entry)
     print(log_entry)  # Also print to console
