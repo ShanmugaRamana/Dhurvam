@@ -273,6 +273,10 @@ async def detect_scam(request: DetectRequest):
             total_time = (time.time() - start_time) * 1000
             add_log(f"[COMPLETE] Orchestration started. Total: {total_time:.2f}ms")
             
+            # DEBUG: Log response being sent
+            import json
+            add_log(f"[DEBUG_RESPONSE] Sending: {json.dumps(result, default=str)}")
+            
             return result
 
     except ValidationError as ve:
