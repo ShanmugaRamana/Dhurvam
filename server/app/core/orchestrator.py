@@ -53,14 +53,19 @@ async def start_orchestration(session_id: str, message_text: str, metadata: dict
         "endReason": None
     }
     
-    # Extract intelligence from first message
-    intel = extract_intelligence(message_text)
+    # Extract intelligence from first message (contextual with Mistral)
+    intel = await extract_intelligence(message_text, session["conversationHistory"])
     session["extractedIntelligence"] = merge_intelligence(
         session["extractedIntelligence"], intel
     )
     
-    # Generate agent reply
-    reply = await generate_reply(message_text, [], metadata.get("channel", "SMS"))
+    # Generate agent reply (with extracted intelligence awareness)
+    reply = await generate_reply(
+        message_text, 
+        session["conversationHistory"], 
+        metadata.get("channel", "SMS"),
+        extracted_intelligence=session["extractedIntelligence"]
+    )
     
     # Add agent reply to history
     session["conversationHistory"].append({
@@ -116,15 +121,20 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
     })
     session["totalMessages"] += 1
     
-    # Extract intelligence
-    intel = extract_intelligence(message_text)
+    # Extract intelligence (contextual with Mistral)
+    intel = await extract_intelligence(message_text, session["conversationHistory"])
     session["extractedIntelligence"] = merge_intelligence(
         session["extractedIntelligence"], intel
     )
     
-    # Generate reply
+    # Generate reply (with extracted intelligence awareness)
     channel = session.get("metadata", {}).get("channel", "SMS")
-    reply = await generate_reply(message_text, session["conversationHistory"], channel)
+    reply = await generate_reply(
+        message_text, 
+        session["conversationHistory"], 
+        channel,
+        extracted_intelligence=session["extractedIntelligence"]
+    )
     
     # Check end condition
     should_end, notes, end_reason = await check_end_condition(

@@ -16,6 +16,25 @@ client = OpenAI(
 )
 
 
+def _build_intel_notes(intel: Dict[str, List[str]]) -> str:
+    """Build a comprehensive notes string from extracted intelligence."""
+    parts = []
+    if intel.get("bankAccounts"):
+        parts.append(f"Bank accounts: {intel['bankAccounts']}")
+    if intel.get("upiIds"):
+        parts.append(f"UPI IDs: {intel['upiIds']}")
+    if intel.get("phoneNumbers"):
+        parts.append(f"Phone numbers: {intel['phoneNumbers']}")
+    if intel.get("phishingLinks"):
+        parts.append(f"Phishing links: {intel['phishingLinks']}")
+    if intel.get("suspiciousKeywords"):
+        parts.append(f"Keywords: {intel['suspiciousKeywords']}")
+    
+    if parts:
+        return "Scammer intelligence extracted: " + ". ".join(parts) + "."
+    return ""
+
+
 async def check_end_condition(
     message_count: int,
     extracted_intelligence: Dict[str, List[str]],
@@ -33,8 +52,9 @@ async def check_end_condition(
     
     # Quick checks (no LLM needed)
     if message_count >= 15:
+        notes = _build_intel_notes(extracted_intelligence)
         add_log(f"[AGENT3_END] Max messages reached")
-        return True, "Maximum conversation limit reached.", "max_messages"
+        return True, notes or "Maximum conversation limit reached.", "max_messages"
     
     # Check extracted intelligence
     has_bank = len(extracted_intelligence.get("bankAccounts", [])) > 0
@@ -45,19 +65,22 @@ async def check_end_condition(
     
     intel_count = sum([has_bank, has_upi, has_phone])
     
-    # End conditions - MORE AGGRESSIVE
+    # End condition 1: Got 2+ types of scammer details (bank/UPI/phone)
+    if intel_count >= 2:
+        notes = _build_intel_notes(extracted_intelligence)
+        add_log(f"[AGENT3_END] Multiple scammer details obtained ({intel_count} types)")
+        return True, notes, "intelligence_gathered"
+    
+    # End condition 2: Got financial details + enough conversation
     if (has_bank or has_upi) and message_count >= 4:
-        notes = f"Extracted financial details: "
-        if has_bank:
-            notes += f"Bank accounts: {extracted_intelligence['bankAccounts']}. "
-        if has_upi:
-            notes += f"UPI IDs: {extracted_intelligence['upiIds']}. "
+        notes = _build_intel_notes(extracted_intelligence)
         add_log(f"[AGENT3_END] Financial details obtained")
         return True, notes, "intelligence_gathered"
     
     if has_link and has_phone and message_count >= 6:
         add_log(f"[AGENT3_END] Link and phone obtained")
-        return True, f"Phishing link and phone number extracted.", "intelligence_gathered"
+        notes = _build_intel_notes(extracted_intelligence)
+        return True, notes, "intelligence_gathered"
     
     all_intel = sum([has_bank, has_upi, has_link, has_phone])
     if all_intel >= 2 and message_count >= 8:
