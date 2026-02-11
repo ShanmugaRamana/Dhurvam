@@ -157,11 +157,10 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
         reply
     )
     
-    if should_end:
-        # End session
-        session["status"] = "ended"
-        session["endedAt"] = datetime.utcnow()
-        session["endReason"] = end_reason
+    if should_end and not session.get("finalized"):
+        # Intelligence gathered — generate agentNotes and submit to GUVI
+        # BUT keep the session ACTIVE so honeypot continues replying
+        add_log(f"[ORCHESTRATOR] Finalizing output (session stays active): {session_id}")
         
         # Generate Groq-powered conversation summary for agentNotes
         try:
@@ -210,21 +209,13 @@ Keep it factual and professional. Do NOT use bullet points."""
             
             summary_response = await _asyncio.to_thread(_call_groq_summary)
             notes = summary_response.choices[0].message.content.strip()
-            add_log(f"[ORCHESTRATOR] Groq summary generated for session end")
+            add_log(f"[ORCHESTRATOR] Groq summary generated")
         except Exception as e:
             add_log(f"[ORCHESTRATOR] Groq summary failed: {str(e)}, using template notes")
             # notes already has template from check_end_condition
         
         session["agentNotes"] = notes
-        
-        # Update in DB
-        update_data = {k: v for k, v in session.items() if k != "_id"}
-        await db.scam_sessions.update_one(
-            {"sessionId": session_id},
-            {"$set": update_data}
-        )
-        
-        add_log(f"[ORCHESTRATOR] Session ended: {session_id}")
+        session["finalized"] = True  # Prevent duplicate GUVI submissions
         
         # Submit final result to GUVI
         from app.core.guvi_client import submit_final_result
@@ -238,7 +229,24 @@ Keep it factual and professional. Do NOT use bullet points."""
         }
         asyncio.create_task(submit_final_result(final_result))
         
-        # Return response with final data
+        # Add reply to history and keep session ACTIVE
+        session["conversationHistory"].append({
+            "sender": "user",
+            "text": reply,
+            "timestamp": datetime.utcnow()
+        })
+        session["totalMessages"] += 1
+        
+        # Update in DB — session stays active!
+        update_data = {k: v for k, v in session.items() if k != "_id"}
+        await db.scam_sessions.update_one(
+            {"sessionId": session_id},
+            {"$set": update_data}
+        )
+        
+        add_log(f"[ORCHESTRATOR] Output finalized, session continues: {session_id}, messages: {session['totalMessages']}")
+        
+        # Return response WITH agentNotes (for testing platform) but session stays active
         return {
             "status": "success",
             "reply": reply,
@@ -247,7 +255,7 @@ Keep it factual and professional. Do NOT use bullet points."""
             "agentNotes": notes
         }
     
-    # Continue session
+    # Continue session (normal flow or already finalized)
     session["conversationHistory"].append({
         "sender": "user",
         "text": reply,

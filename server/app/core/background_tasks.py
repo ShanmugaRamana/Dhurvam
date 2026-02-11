@@ -10,7 +10,7 @@ from app.core.logger import add_log
 # Indian Standard Time offset
 IST = timezone(timedelta(hours=5, minutes=30))
 
-# 45-second timeout
+# 45-second timeout — session ends when scammer stops replying
 TIMEOUT_SECONDS = 45
 
 
