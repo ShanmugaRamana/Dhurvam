@@ -78,25 +78,56 @@ async def check_inactive_sessions():
                         ])
                         
                         intel = session.get("extractedIntelligence", {})
-                        has_intel = any([
-                            intel.get('bankAccounts'),
-                            intel.get('upiIds'),
-                            intel.get('phoneNumbers'),
-                            intel.get('phishingLinks')
-                        ])
                         
-                        if has_intel:
-                            intel_items = []
-                            if intel.get('bankAccounts'):
-                                intel_items.append(f"{len(intel['bankAccounts'])} bank account(s)")
-                            if intel.get('upiIds'):
-                                intel_items.append(f"{len(intel['upiIds'])} UPI ID(s)")
-                            if intel.get('phoneNumbers'):
-                                intel_items.append(f"{len(intel['phoneNumbers'])} phone number(s)")
-                            
-                            agent_notes = f"Scam engagement completed. Successfully extracted: {', '.join(intel_items)}."
-                        else:
-                            agent_notes = f"Scam conversation engaged over {session.get('totalMessages', 0)} messages. No sensitive information extracted."
+                        # Use Groq to generate intelligent summary
+                        from groq import Groq
+                        from app.core.config import GROQ_API_KEY
+                        
+                        groq_client = Groq(api_key=GROQ_API_KEY)
+                        
+                        intel_text = ""
+                        if intel.get('bankAccounts'):
+                            intel_text += f"Bank Accounts: {intel['bankAccounts']}. "
+                        if intel.get('upiIds'):
+                            intel_text += f"UPI IDs: {intel['upiIds']}. "
+                        if intel.get('phoneNumbers'):
+                            intel_text += f"Phone Numbers: {intel['phoneNumbers']}. "
+                        
+                        summary_prompt = f"""Summarize this scam conversation concisely for law enforcement.
+
+CONVERSATION:
+{conversation_text}
+
+EXTRACTED INTELLIGENCE: {intel_text if intel_text else 'None'}
+
+Write a 3-4 sentence summary covering:
+1. What type of scam was attempted (account fraud, job scam, lottery, etc.)
+2. What the scammer demanded from the victim
+3. What intelligence was extracted (bank accounts, UPI IDs, phone numbers)
+4. If you find ANY of these in the conversation, mention them: IFSC codes, scammer names, email addresses
+
+Keep it factual and professional. Do NOT use bullet points."""
+
+                        try:
+                            summary_response = groq_client.chat.completions.create(
+                                model="llama-3.3-70b-versatile",
+                                messages=[{"role": "user", "content": summary_prompt}],
+                                max_tokens=200,
+                                temperature=0.3
+                            )
+                            agent_notes = summary_response.choices[0].message.content.strip()
+                        except Exception as groq_err:
+                            add_log(f"[AUTO_TIMEOUT] Groq summary failed: {str(groq_err)}, using template")
+                            # Fallback to template
+                            has_intel = any([intel.get('bankAccounts'), intel.get('upiIds'), intel.get('phoneNumbers')])
+                            if has_intel:
+                                items = []
+                                if intel.get('bankAccounts'): items.append(f"Bank accounts: {intel['bankAccounts']}")
+                                if intel.get('upiIds'): items.append(f"UPI IDs: {intel['upiIds']}")
+                                if intel.get('phoneNumbers'): items.append(f"Phone numbers: {intel['phoneNumbers']}")
+                                agent_notes = f"Scam engagement completed over {session.get('totalMessages', 0)} messages. Extracted: {'. '.join(items)}."
+                            else:
+                                agent_notes = f"Scam conversation engaged over {session.get('totalMessages', 0)} messages. No sensitive information extracted."
                     except Exception as e:
                         add_log(f"[AUTO_TIMEOUT_ERROR] Failed to generate notes: {str(e)}")
                         agent_notes = f"Session auto-closed after {int(inactive_seconds)} seconds of inactivity."

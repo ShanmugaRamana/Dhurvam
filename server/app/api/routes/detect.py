@@ -4,9 +4,10 @@ from typing import List, Optional
 from datetime import datetime
 import traceback
 import time
+import asyncio
 
 from mistralai import Mistral
-from app.core.config import MISTRAL_API_KEY
+from app.core.config import MISTRAL_API_KEY, OPENROUTER_API_KEY
 from app.core.logger import add_log
 from app.core.database import get_database
 from app.core.orchestrator import start_orchestration, continue_orchestration
@@ -172,20 +173,39 @@ SCAMMER Examples:
 OUTPUT: Return ONLY one word - either "Human" or "Scammer"
 Classification:"""
 
-    response = mistral_client.chat.complete(
-        model="mistral-small-latest",
-        messages=[{"content": prompt, "role": "user"}],
-        stream=False
-    )
+    # Retry with backoff for rate limiting (429 errors)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = mistral_client.chat.complete(
+                model="mistral-small-latest",
+                messages=[{"content": prompt, "role": "user"}],
+                stream=False
+            )
+            
+            raw_response = response.choices[0].message.content.strip()
+            
+            if "Scammer" in raw_response:
+                return "Scammer"
+            elif "Human" in raw_response:
+                return "Human"
+            else:
+                return "Scammer"  # Default: when uncertain, classify as scammer
+                
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "rate" in error_str.lower() or "capacity" in error_str.lower():
+                wait_time = (2 ** attempt)  # 1s, 2s, 4s
+                add_log(f"[DETECTION_RETRY] Mistral rate limited (attempt {attempt + 1}/{max_retries}), waiting {wait_time}s")
+                await asyncio.sleep(wait_time)
+                if attempt == max_retries - 1:
+                    add_log(f"[DETECTION_ERROR] All retries exhausted, defaulting to Scammer")
+                    return "Scammer"
+            else:
+                add_log(f"[DETECTION_ERROR] Mistral error: {error_str}")
+                return "Scammer"  # Non-rate-limit error, default to Scammer
     
-    raw_response = response.choices[0].message.content.strip()
-    
-    if "Scammer" in raw_response:
-        return "Scammer"
-    elif "Human" in raw_response:
-        return "Human"
-    else:
-        return "Scammer"  # Default: when uncertain, classify as scammer
+    return "Scammer"
 
 
 @router.post("/detect")
@@ -218,6 +238,17 @@ async def detect_scam(request: DetectRequest):
             add_log(f"[COMPLETE] Total request time: {total_time:.2f}ms")
             
             return result
+        
+        if existing_session and existing_session.get("status") in ("ended", "processing_timeout"):
+            # Session already ended — return final data without re-creating
+            add_log(f"[ENDED] Session already ended: {session_id}, returning final data")
+            return {
+                "status": "success",
+                "reply": "Thank you for your patience, we are processing your request.",
+                "totalMessagesExchanged": existing_session.get("totalMessages", 0),
+                "extractedIntelligence": existing_session.get("extractedIntelligence", {}),
+                "agentNotes": existing_session.get("agentNotes", "")
+            }
         
         # New message → Initial detection
         add_log(f"[DETECTION] New message, classifying...")
@@ -255,7 +286,8 @@ async def detect_scam(request: DetectRequest):
             # Return only the fields expected by hackathon portal
             response = {
                 "status": "success",
-                "reply": "Thank you for your message."
+                "reply": "Thank you for your message.",
+                "totalMessagesExchanged": 1
             }
             
             # DEBUG: Log response being sent
@@ -535,8 +567,8 @@ Your summary:"""
         "status": "ended",
         "sessionId": session_id,
         "scamDetected": True,
-        "totalMessagesExchanged": updated_session.get("totalMessages", 0),
-        "extractedIntelligence": updated_session.get("extractedIntelligence", {}),
+        "totalMessagesExchanged": final_session.get("totalMessages", 0),
+        "extractedIntelligence": final_session.get("extractedIntelligence", {}),
         "agentNotes": agent_notes,
         "endReason": "timeout"
     }
