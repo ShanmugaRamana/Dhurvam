@@ -239,6 +239,17 @@ async def detect_scam(request: DetectRequest):
             
             return result
         
+        if existing_session and existing_session.get("status") in ("ended", "processing_timeout"):
+            # Session already ended — return final data without re-creating
+            add_log(f"[ENDED] Session already ended: {session_id}, returning final data")
+            return {
+                "status": "success",
+                "reply": "Thank you for your patience, we are processing your request.",
+                "totalMessagesExchanged": existing_session.get("totalMessages", 0),
+                "extractedIntelligence": existing_session.get("extractedIntelligence", {}),
+                "agentNotes": existing_session.get("agentNotes", "")
+            }
+        
         # New message → Initial detection
         add_log(f"[DETECTION] New message, classifying...")
         
@@ -275,7 +286,8 @@ async def detect_scam(request: DetectRequest):
             # Return only the fields expected by hackathon portal
             response = {
                 "status": "success",
-                "reply": "Thank you for your message."
+                "reply": "Thank you for your message.",
+                "totalMessagesExchanged": 1
             }
             
             # DEBUG: Log response being sent

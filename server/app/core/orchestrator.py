@@ -75,15 +75,21 @@ async def start_orchestration(session_id: str, message_text: str, metadata: dict
     })
     session["totalMessages"] = 2
     
-    # Save session
+    # Save session (upsert to prevent duplicates from rapid requests)
     if db is not None:
-        await db.scam_sessions.insert_one(session)
+        await db.scam_sessions.update_one(
+            {"sessionId": session_id},
+            {"$set": {k: v for k, v in session.items() if k != "_id"}},
+            upsert=True
+        )
         add_log(f"[ORCHESTRATOR] Session created: {session_id}")
     
-    # Return only fields expected by hackathon portal
+    # Return response with message count for portal
     return {
         "status": "success",
-        "reply": reply
+        "reply": reply,
+        "totalMessagesExchanged": session["totalMessages"],
+        "extractedIntelligence": session["extractedIntelligence"]
     }
 
 
@@ -127,11 +133,18 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
         session["extractedIntelligence"], intel
     )
     
+    # Use the LONGER history for reply generation (portal's vs MongoDB's)
+    # Portal's history is authoritative when rapid requests cause MongoDB to lag
+    best_history = session["conversationHistory"]
+    if conversation_history and len(conversation_history) > len(best_history):
+        best_history = conversation_history
+        add_log(f"[ORCHESTRATOR] Using portal history ({len(conversation_history)} msgs) over DB history ({len(session['conversationHistory'])} msgs)")
+    
     # Generate reply (with extracted intelligence awareness)
     channel = session.get("metadata", {}).get("channel", "SMS")
     reply = await generate_reply(
         message_text, 
-        session["conversationHistory"], 
+        best_history, 
         channel,
         extracted_intelligence=session["extractedIntelligence"]
     )
@@ -148,13 +161,67 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
         # End session
         session["status"] = "ended"
         session["endedAt"] = datetime.utcnow()
-        session["agentNotes"] = notes
         session["endReason"] = end_reason
         
+        # Generate Groq-powered conversation summary for agentNotes
+        try:
+            from groq import Groq
+            from app.core.config import GROQ_API_KEY
+            
+            import asyncio as _asyncio
+            groq_client = Groq(api_key=GROQ_API_KEY)
+            
+            conversation_text = "\n".join([
+                f"{msg.get('sender', 'unknown')}: {msg.get('text', '')}"
+                for msg in session.get("conversationHistory", [])
+            ])
+            
+            intel = session["extractedIntelligence"]
+            intel_text = ""
+            if intel.get('bankAccounts'):
+                intel_text += f"Bank Accounts: {intel['bankAccounts']}. "
+            if intel.get('upiIds'):
+                intel_text += f"UPI IDs: {intel['upiIds']}. "
+            if intel.get('phoneNumbers'):
+                intel_text += f"Phone Numbers: {intel['phoneNumbers']}. "
+            
+            summary_prompt = f"""Summarize this scam conversation concisely for law enforcement.
+
+CONVERSATION:
+{conversation_text}
+
+EXTRACTED INTELLIGENCE: {intel_text if intel_text else 'None'}
+
+Write a 3-4 sentence summary covering:
+1. What type of scam was attempted (account fraud, job scam, lottery, etc.)
+2. What the scammer demanded from the victim
+3. What intelligence was extracted (bank accounts, UPI IDs, phone numbers)
+4. If you find ANY of these in the conversation, mention them: IFSC codes, scammer names, email addresses
+
+Keep it factual and professional. Do NOT use bullet points."""
+            
+            def _call_groq_summary():
+                return groq_client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": summary_prompt}],
+                    max_tokens=200,
+                    temperature=0.3
+                )
+            
+            summary_response = await _asyncio.to_thread(_call_groq_summary)
+            notes = summary_response.choices[0].message.content.strip()
+            add_log(f"[ORCHESTRATOR] Groq summary generated for session end")
+        except Exception as e:
+            add_log(f"[ORCHESTRATOR] Groq summary failed: {str(e)}, using template notes")
+            # notes already has template from check_end_condition
+        
+        session["agentNotes"] = notes
+        
         # Update in DB
+        update_data = {k: v for k, v in session.items() if k != "_id"}
         await db.scam_sessions.update_one(
             {"sessionId": session_id},
-            {"$set": session}
+            {"$set": update_data}
         )
         
         add_log(f"[ORCHESTRATOR] Session ended: {session_id}")
@@ -165,16 +232,19 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
         final_result = {
             "sessionId": session_id,
             "scamDetected": True,
-            "totalMessagesExchanged": session["totalMessages"],
+            "totalMessages": session["totalMessages"],
             "extractedIntelligence": session["extractedIntelligence"],
             "agentNotes": notes
         }
         asyncio.create_task(submit_final_result(final_result))
         
-        # Return only fields expected by hackathon portal
+        # Return response with final data
         return {
             "status": "success",
-            "reply": reply
+            "reply": reply,
+            "totalMessagesExchanged": session["totalMessages"],
+            "extractedIntelligence": session["extractedIntelligence"],
+            "agentNotes": notes
         }
     
     # Continue session
@@ -185,18 +255,21 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
     })
     session["totalMessages"] += 1
     
-    # Update in DB
+    # Update in DB (exclude _id to avoid MongoDB errors)
+    update_data = {k: v for k, v in session.items() if k != "_id"}
     await db.scam_sessions.update_one(
         {"sessionId": session_id},
-        {"$set": session}
+        {"$set": update_data}
     )
     
     add_log(f"[ORCHESTRATOR] Session continues: {session_id}, messages: {session['totalMessages']}")
     
-    # Return only fields expected by hackathon portal
+    # Return response with current data
     return {
         "status": "success",
-        "reply": reply
+        "reply": reply,
+        "totalMessagesExchanged": session["totalMessages"],
+        "extractedIntelligence": session["extractedIntelligence"]
     }
 
 

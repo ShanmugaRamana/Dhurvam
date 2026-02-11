@@ -127,7 +127,7 @@ async def extract_with_mistral_context(
         # Only keywords found, no need for contextual analysis
         return regex_candidates
     
-    prompt = f"""You are analyzing a scam conversation to extract the SCAMMER'S payment and contact details.
+    prompt = f"""You are analyzing a scam conversation. Extract ONLY the SCAMMER'S details — NOT the victim's.
 
 MESSAGE: "{text}"
 
@@ -137,17 +137,27 @@ CONVERSATION CONTEXT:
 REGEX FOUND THESE CANDIDATES:
 {json.dumps(candidates, indent=2)}
 
-YOUR TASK: Determine which of these belong to the SCAMMER (data they want money sent to, or their contact info).
+CLASSIFICATION RULES:
 
-RULES:
-1. EXTRACT: Account numbers, UPI IDs, phone numbers the scammer wants the VICTIM to send money/transfer to
-2. EXTRACT: Payment details the scammer provides as THEIR OWN receiving details
-3. EXTRACT: Any number used with "transfer to", "send to", "pay to" — this is the scammer's receiving account
-4. IGNORE: Numbers ONLY mentioned as the victim's account with NO transfer request (e.g. "Your account X was hacked" with no payment request)
-5. KEY RULE: If the SAME number is mentioned as "your account" BUT ALSO used as a transfer destination (e.g. "transfer Rs.500 to account X"), then EXTRACT it — the scammer is using it to receive money
-6. WHEN UNSURE: INCLUDE the data (better to over-extract than miss scammer details)
+PHONE NUMBERS:
+- EXTRACT: Any phone number the scammer says to "call", "reach", "contact" them at. This is the scammer's number.
+- EXTRACT: Any phone number the scammer provides proactively (e.g. "call us at X", "our number is X", "you can reach me at X")
+- IGNORE: Phone numbers the scammer claims belong to the victim (e.g. "OTP sent to YOUR number X")
 
-Return ONLY valid JSON with these exact keys (include items that are the scammer's OR used as transfer destinations):
+BANK ACCOUNTS:
+- EXTRACT: Account numbers where the scammer asks victim to TRANSFER or SEND money TO (e.g. "transfer to account X", "pay to X")
+- IGNORE: Account numbers the scammer refers to as the VICTIM'S account (e.g. "your account X is compromised", "verify your account X")
+- KEY TEST: Does the scammer want MONEY SENT TO this account? If yes → extract. If scammer is REFERRING TO the victim's existing account → ignore.
+
+UPI IDs:
+- EXTRACT: UPI IDs where the scammer asks victim to SEND PAYMENT (e.g. "transfer fee to X@bank", "pay to X@bank")
+- EXTRACT: UPI IDs the scammer provides as their own receiving ID
+- IGNORE: UPI IDs the scammer asks the victim to share (e.g. "send me YOUR UPI ID")
+
+PHISHING LINKS:
+- EXTRACT: All suspicious links/URLs the scammer shares
+
+Return ONLY valid JSON:
 {{"bankAccounts": [], "upiIds": [], "phoneNumbers": [], "phishingLinks": []}}"""
 
     try:
@@ -194,14 +204,7 @@ Return ONLY valid JSON with these exact keys (include items that are the scammer
 async def extract_intelligence(text: str, conversation_history: list = None) -> Dict[str, List[str]]:
     """
     Extract scam-related intelligence from message text.
-    Uses hybrid approach: fast regex + contextual Mistral validation.
-    
-    Args:
-        text: The scammer's message
-        conversation_history: Previous conversation messages for context
-    
-    Returns:
-        Dict with extracted intelligence (same format as before)
+    Uses hybrid approach: fast regex + contextual Mistral validation + rule-based boost.
     """
     add_log(f"[AGENT2_START] Extracting intelligence from message")
     
@@ -229,34 +232,82 @@ async def extract_intelligence(text: str, conversation_history: list = None) -> 
             extract_with_mistral_context(text, regex_results, conversation_history),
             timeout=3.0  # 3 second timeout
         )
-        
-        found = {k: v for k, v in result.items() if v}
-        if found:
-            add_log(f"[AGENT2_END] Contextual extraction: {found}")
-        else:
-            add_log(f"[AGENT2_END] No intelligence after contextual filtering")
-        return result
-        
     except asyncio.TimeoutError:
         add_log(f"[AGENT2_TIMEOUT] Mistral timed out, using regex results")
-        return regex_results
+        result = regex_results
     except Exception as e:
         add_log(f"[AGENT2_ERROR] Contextual extraction failed: {str(e)}, using regex")
-        return regex_results
+        result = regex_results
+    
+    # Step 3: Rule-based boost — force-extract data from clear "transfer to" patterns
+    # This catches cases Mistral misses
+    text_lower = text.lower()
+    
+    # Force-extract bank accounts when "transfer to account" pattern is present
+    transfer_patterns = ["transfer to account", "transfer the", "pay to account", "send to account", 
+                         "fee to account", "transfer.*to.*account"]
+    for pattern in transfer_patterns:
+        if re.search(pattern, text_lower):
+            # Find any bank account numbers in the original regex results
+            for acc in regex_results.get("bankAccounts", []):
+                if acc not in result.get("bankAccounts", []):
+                    result.setdefault("bankAccounts", []).append(acc)
+                    add_log(f"[AGENT2_BOOST] Force-extracted bank account from transfer pattern: {acc}")
+            break
+    
+    # Force-extract UPI when "transfer/pay to UPI" pattern is present
+    upi_transfer = ["transfer.*to.*upi", "fee to upi", "pay.*to.*upi", "transfer.*to.*@", "fee to.*@", "pay to.*@"]
+    for pattern in upi_transfer:
+        if re.search(pattern, text_lower):
+            for upi in regex_results.get("upiIds", []):
+                if upi not in result.get("upiIds", []):
+                    result.setdefault("upiIds", []).append(upi)
+                    add_log(f"[AGENT2_BOOST] Force-extracted UPI from transfer pattern: {upi}")
+            break
+    
+    # Force-extract phone when "call us/me at" pattern is present
+    call_patterns = ["call.*at", "reach.*at", "contact.*at", "call me", "call us", "our.*line.*at"]
+    for pattern in call_patterns:
+        if re.search(pattern, text_lower):
+            for phone in regex_results.get("phoneNumbers", []):
+                if phone not in result.get("phoneNumbers", []):
+                    result.setdefault("phoneNumbers", []).append(phone)
+                    add_log(f"[AGENT2_BOOST] Force-extracted phone from call pattern: {phone}")
+            break
+    
+    found = {k: v for k, v in result.items() if v}
+    if found:
+        add_log(f"[AGENT2_END] Final extraction: {found}")
+    else:
+        add_log(f"[AGENT2_END] No intelligence after filtering")
+    return result
+
+
+def _normalize_phones(phones: List[str]) -> List[str]:
+    """Deduplicate phone numbers by keeping the longest variant of each unique number."""
+    if not phones:
+        return phones
+    
+    # Group by raw digits (strip all non-digit characters)
+    digit_map = {}
+    for phone in phones:
+        digits = re.sub(r'\D', '', phone)
+        # Remove leading country code (91) for comparison
+        key = digits[-10:] if len(digits) >= 10 else digits
+        # Keep the longest (most complete) variant
+        if key not in digit_map or len(phone) > len(digit_map[key]):
+            digit_map[key] = phone
+    
+    return list(digit_map.values())
 
 
 def merge_intelligence(existing: Dict[str, List[str]], new: Dict[str, List[str]]) -> Dict[str, List[str]]:
-    """
-    Merge new extracted intelligence into existing.
-    
-    Args:
-        existing: Previously extracted intelligence
-        new: Newly extracted intelligence
-    
-    Returns:
-        Merged dictionary
-    """
+    """Merge new extracted intelligence into existing, with phone deduplication."""
     merged = {}
     for key in existing.keys():
-        merged[key] = list(set(existing.get(key, []) + new.get(key, [])))
+        combined = list(set(existing.get(key, []) + new.get(key, [])))
+        # Normalize phone numbers to prevent duplicates
+        if key == "phoneNumbers":
+            combined = _normalize_phones(combined)
+        merged[key] = combined
     return merged

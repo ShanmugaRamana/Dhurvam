@@ -51,7 +51,7 @@ async def check_end_condition(
     add_log(f"[AGENT3_START] Checking end condition (msg: {message_count})")
     
     # Quick checks (no LLM needed)
-    if message_count >= 15:
+    if message_count >= 20:
         notes = _build_intel_notes(extracted_intelligence)
         add_log(f"[AGENT3_END] Max messages reached")
         return True, notes or "Maximum conversation limit reached.", "max_messages"
@@ -65,29 +65,32 @@ async def check_end_condition(
     
     intel_count = sum([has_bank, has_upi, has_phone])
     
-    # End condition 1: Got 2+ types of scammer details (bank/UPI/phone)
-    if intel_count >= 2:
+    # IMPORTANT: Never end before message 8 — need enough conversation for good summary
+    # and to extract all possible intelligence (phone, UPI, bank account)
+    if message_count < 8:
+        add_log(f"[AGENT3_END] Too early to end (msg: {message_count}, intel: {intel_count})")
+        return False, "Continuing engagement", ""
+    
+    # End condition 1: Got ALL 3 types of scammer details (bank + UPI + phone)
+    if intel_count >= 3:
+        notes = _build_intel_notes(extracted_intelligence)
+        add_log(f"[AGENT3_END] All scammer details obtained ({intel_count} types)")
+        return True, notes, "intelligence_gathered"
+    
+    # End condition 2: Got 2+ types after enough conversation (8+ messages)
+    if intel_count >= 2 and message_count >= 10:
         notes = _build_intel_notes(extracted_intelligence)
         add_log(f"[AGENT3_END] Multiple scammer details obtained ({intel_count} types)")
         return True, notes, "intelligence_gathered"
     
-    # End condition 2: Got financial details + enough conversation
-    if (has_bank or has_upi) and message_count >= 4:
+    # End condition 3: Got financial details + good conversation length
+    if (has_bank or has_upi) and message_count >= 12:
         notes = _build_intel_notes(extracted_intelligence)
-        add_log(f"[AGENT3_END] Financial details obtained")
+        add_log(f"[AGENT3_END] Financial details obtained with enough conversation")
         return True, notes, "intelligence_gathered"
     
-    if has_link and has_phone and message_count >= 6:
-        add_log(f"[AGENT3_END] Link and phone obtained")
-        notes = _build_intel_notes(extracted_intelligence)
-        return True, notes, "intelligence_gathered"
-    
-    all_intel = sum([has_bank, has_upi, has_link, has_phone])
-    if all_intel >= 2 and message_count >= 8:
-        add_log(f"[AGENT3_END] Multiple intel types obtained")
-        return True, "Multiple intelligence types extracted.", "intelligence_gathered"
-    
-    if message_count >= 10:
+    # End condition 4: After 14 messages, check with LLM
+    if message_count >= 14:
         try:
             prompt = f"""Scam conversation analysis. Should we END?
 
@@ -114,7 +117,8 @@ Reply ONLY: END or CONTINUE"""
             add_log(f"[AGENT3_END] LLM decision in {duration:.2f}ms: {result}")
             
             if "END" in result:
-                return True, "Scammer engagement complete. Intelligence gathered.", "llm_decision"
+                notes = _build_intel_notes(extracted_intelligence)
+                return True, notes, "llm_decision"
             
         except Exception as e:
             add_log(f"[AGENT3_ERROR] OpenRouter failed: {str(e)}")
