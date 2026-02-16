@@ -257,6 +257,7 @@ async def detect_scam(request: DetectRequest):
                     "upiIds": [],
                     "phishingLinks": [],
                     "phoneNumbers": [],
+                    "emailAddresses": [],
                     "suspiciousKeywords": []
                 },
                 "agentNotes": "Legitimate message detected, no scam intent"

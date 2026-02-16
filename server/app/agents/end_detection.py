@@ -27,6 +27,8 @@ def _build_intel_notes(intel: Dict[str, List[str]]) -> str:
         parts.append(f"Phone numbers: {intel['phoneNumbers']}")
     if intel.get("phishingLinks"):
         parts.append(f"Phishing links: {intel['phishingLinks']}")
+    if intel.get("emailAddresses"):
+        parts.append(f"Email addresses: {intel['emailAddresses']}")
     if intel.get("suspiciousKeywords"):
         parts.append(f"Keywords: {intel['suspiciousKeywords']}")
     
@@ -58,21 +60,23 @@ async def check_end_condition(
     has_bank = len(extracted_intelligence.get("bankAccounts", [])) > 0
     has_upi = len(extracted_intelligence.get("upiIds", [])) > 0
     has_phone = len(extracted_intelligence.get("phoneNumbers", [])) > 0
-    intel_count = sum([has_bank, has_upi, has_phone])
+    has_phishing = len(extracted_intelligence.get("phishingLinks", [])) > 0
+    has_email = len(extracted_intelligence.get("emailAddresses", [])) > 0
+    intel_count = sum([has_bank, has_upi, has_phone, has_phishing, has_email])
     
-    # Don't finalize too early — need enough conversation
-    if message_count < 8:
+    # Don't finalize too early — need some conversation
+    if message_count < 4:
         add_log(f"[AGENT3_END] Too early (msg: {message_count}, intel: {intel_count})")
         return False, "Continuing engagement", ""
     
     # Ready to finalize: Got 2+ types of scammer details after enough conversation
-    if intel_count >= 2 and message_count >= 10:
+    if intel_count >= 2 and message_count >= 6:
         notes = _build_intel_notes(extracted_intelligence)
         add_log(f"[AGENT3_END] Ready to finalize ({intel_count} intel types, {message_count} msgs)")
         return True, notes, "intelligence_gathered"
     
     # Ready to finalize: Got financial details + good conversation
-    if (has_bank or has_upi) and message_count >= 12:
+    if (has_bank or has_upi or has_phishing) and message_count >= 8:
         notes = _build_intel_notes(extracted_intelligence)
         add_log(f"[AGENT3_END] Ready to finalize (financial intel, {message_count} msgs)")
         return True, notes, "intelligence_gathered"

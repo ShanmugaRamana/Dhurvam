@@ -72,6 +72,7 @@ def format_guvi_payload(session_data: Dict) -> Dict:
             "upiIds": intel.get("upiIds", []),
             "phishingLinks": intel.get("phishingLinks", []),
             "phoneNumbers": intel.get("phoneNumbers", []),
+            "emailAddresses": intel.get("emailAddresses", []),
             "suspiciousKeywords": intel.get("suspiciousKeywords", [])
         },
         "agentNotes": session_data.get("agentNotes", "Session completed.")

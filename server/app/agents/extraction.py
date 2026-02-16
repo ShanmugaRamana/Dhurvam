@@ -29,6 +29,9 @@ PATTERNS = {
         r"\+91[-\s]?\d{10}",  # Indian with +91
         r"\b[6-9]\d{9}\b",  # Indian 10-digit mobile
     ],
+    "emailAddresses": [
+        r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",  # Standard email format
+    ],
     "suspiciousKeywords": [
         r"\b(urgent|immediately|now|hurry|asap)\b",
         r"\b(verify|blocked|suspended|locked)\b",
@@ -49,6 +52,7 @@ def extract_with_regex(text: str) -> Dict[str, List[str]]:
         "upiIds": [],
         "phishingLinks": [],
         "phoneNumbers": [],
+        "emailAddresses": [],
         "suspiciousKeywords": []
     }
     
@@ -69,6 +73,10 @@ def extract_with_regex(text: str) -> Dict[str, List[str]]:
     for category, patterns in PATTERNS.items():
         if category == "phoneNumbers":
             continue
+        
+        # Special handling for emails — don't let UPI regex catch them
+        if category == "upiIds":
+            pass  # Will filter below
             
         for pattern in patterns:
             if category == "suspiciousKeywords":
@@ -88,6 +96,13 @@ def extract_with_regex(text: str) -> Dict[str, List[str]]:
                         continue
                     if len(digits_only) == 10 and digits_only[0] in '6789':
                         continue
+                
+                # Don't add emails as UPI IDs
+                if category == "upiIds" and re.search(r'\.[a-zA-Z]{2,}$', match_clean):
+                    # This looks like an email, not a UPI ID
+                    if match_clean not in result["emailAddresses"]:
+                        result["emailAddresses"].append(match_clean)
+                    continue
                 
                 if match_clean not in result[category]:
                     result[category].append(match_clean)
@@ -154,7 +169,7 @@ PHISHING LINKS:
 - EXTRACT: All suspicious links/URLs the scammer shares
 
 Return ONLY valid JSON:
-{{"bankAccounts": [], "upiIds": [], "phoneNumbers": [], "phishingLinks": []}}"""
+{{"bankAccounts": [], "upiIds": [], "phoneNumbers": [], "phishingLinks": [], "emailAddresses": []}}"""
 
     try:
         response = await mistral_manager.call(
@@ -183,6 +198,7 @@ Return ONLY valid JSON:
             "upiIds": parsed.get("upiIds", []),
             "phishingLinks": parsed.get("phishingLinks", regex_candidates.get("phishingLinks", [])),
             "phoneNumbers": parsed.get("phoneNumbers", []),
+            "emailAddresses": parsed.get("emailAddresses", regex_candidates.get("emailAddresses", [])),
             "suspiciousKeywords": regex_candidates.get("suspiciousKeywords", [])
         }
         
