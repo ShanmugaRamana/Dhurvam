@@ -6,16 +6,12 @@ import traceback
 import time
 import asyncio
 
-from mistralai import Mistral
-from app.core.config import MISTRAL_API_KEY, OPENROUTER_API_KEY
+from app.core.api_clients import mistral_manager, openrouter_manager
 from app.core.logger import add_log
 from app.core.database import get_database
 from app.core.orchestrator import start_orchestration, continue_orchestration
 
 router = APIRouter()
-
-# Configure Mistral for detection
-mistral_client = Mistral(api_key=MISTRAL_API_KEY)
 
 
 class Message(BaseModel):
@@ -173,39 +169,26 @@ SCAMMER Examples:
 OUTPUT: Return ONLY one word - either "Human" or "Scammer"
 Classification:"""
 
-    # Retry with backoff for rate limiting (429 errors)
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = mistral_client.chat.complete(
-                model="mistral-small-latest",
-                messages=[{"content": prompt, "role": "user"}],
-                stream=False
-            )
+    # Call Mistral with automatic key failover
+    try:
+        response = await mistral_manager.call(
+            model="mistral-small-latest",
+            messages=[{"content": prompt, "role": "user"}],
+            stream=False
+        )
+        
+        raw_response = response.choices[0].message.content.strip()
+        
+        if "Scammer" in raw_response:
+            return "Scammer"
+        elif "Human" in raw_response:
+            return "Human"
+        else:
+            return "Scammer"  # Default: when uncertain, classify as scammer
             
-            raw_response = response.choices[0].message.content.strip()
-            
-            if "Scammer" in raw_response:
-                return "Scammer"
-            elif "Human" in raw_response:
-                return "Human"
-            else:
-                return "Scammer"  # Default: when uncertain, classify as scammer
-                
-        except Exception as e:
-            error_str = str(e)
-            if "429" in error_str or "rate" in error_str.lower() or "capacity" in error_str.lower():
-                wait_time = (2 ** attempt)  # 1s, 2s, 4s
-                add_log(f"[DETECTION_RETRY] Mistral rate limited (attempt {attempt + 1}/{max_retries}), waiting {wait_time}s")
-                await asyncio.sleep(wait_time)
-                if attempt == max_retries - 1:
-                    add_log(f"[DETECTION_ERROR] All retries exhausted, defaulting to Scammer")
-                    return "Scammer"
-            else:
-                add_log(f"[DETECTION_ERROR] Mistral error: {error_str}")
-                return "Scammer"  # Non-rate-limit error, default to Scammer
-    
-    return "Scammer"
+    except Exception as e:
+        add_log(f"[DETECTION_ERROR] All Mistral keys failed: {str(e)}, defaulting to Scammer")
+        return "Scammer"
 
 
 @router.post("/detect")
@@ -431,7 +414,7 @@ async def timeout_session(session_id: str):
         return {"status": "already_ended", "sessionId": session_id}
     
     # Generate conversation summary using LLM
-    from openai import OpenAI
+
     
     conversation_text = "\n".join([
         f"{msg.get('sender', 'unknown')}: {msg.get('text', '')}"
@@ -447,13 +430,8 @@ async def timeout_session(session_id: str):
         intel.get('phishingLinks')
     ])
     
-    # Use OpenRouter to generate summary
+    # Use OpenRouter to generate summary (with key failover)
     try:
-        client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=OPENROUTER_API_KEY
-        )
-        
         # Format intelligence in a readable way
         intel_details = []
         if intel.get('bankAccounts'):
@@ -467,7 +445,7 @@ async def timeout_session(session_id: str):
         
         intel_formatted = "\n".join(intel_details) if intel_details else "None"
         
-        response = client.chat.completions.create(
+        response = await openrouter_manager.call(
             model="google/gemini-2.0-flash-exp:free",
             messages=[{
                 "role": "user",

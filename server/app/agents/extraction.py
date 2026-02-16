@@ -1,18 +1,14 @@
 """
 Agent 2: Extraction Agent
-Provider: Mistral AI (contextual) + Python Regex (fast fallback)
+Provider: Mistral AI (contextual) + Python Regex (fast fallback) — with multi-key failover
 Purpose: Extract structured intelligence from scammer messages with contextual understanding
 """
 import re
 import json
 import asyncio
 from typing import Dict, List
-from mistralai import Mistral
-from app.core.config import MISTRAL_API_KEY
+from app.core.api_clients import mistral_manager
 from app.core.logger import add_log
-
-# Initialize Mistral client for contextual extraction
-mistral_client = Mistral(api_key=MISTRAL_API_KEY)
 
 # Extraction patterns (regex - fast first pass)
 PATTERNS = {
@@ -161,7 +157,7 @@ Return ONLY valid JSON:
 {{"bankAccounts": [], "upiIds": [], "phoneNumbers": [], "phishingLinks": []}}"""
 
     try:
-        response = mistral_client.chat.complete(
+        response = await mistral_manager.call(
             model="mistral-small-latest",
             messages=[{"content": prompt, "role": "user"}],
             stream=False,
