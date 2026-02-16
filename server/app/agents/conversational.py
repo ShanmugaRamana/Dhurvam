@@ -1,19 +1,14 @@
 """
 Agent 1: Conversational Agent (Honeypot)
-Provider: Groq (llama-3.3-70b-versatile)
+Provider: Groq (llama-3.3-70b-versatile) — with multi-key failover
 Purpose: Act as a believable victim to naturally extract scammer details
          (bank accounts, UPI IDs, phone numbers) across ANY scam type.
          The LLM decides all replies — no hardcoded responses.
 """
-from groq import Groq
-from app.core.config import GROQ_API_KEY
+from app.core.api_clients import groq_manager
 from app.core.logger import add_log
 import time
-import asyncio
 import traceback
-
-# Initialize Groq client
-client = Groq(api_key=GROQ_API_KEY)
 
 
 def _build_intelligence_status(extracted_intelligence: dict) -> str:
@@ -117,7 +112,7 @@ async def generate_reply(
     No hardcoded replies — the model decides everything based on context.
     """
     start_time = time.time()
-    add_log(f"[AGENT1_START] Generating reply via Groq")
+    add_log(f"[AGENT1_START] Generating reply via Groq (failover)")
 
     # Count conversation turns
     turn_count = len(conversation_history) // 2
@@ -190,9 +185,8 @@ TURN NUMBER: {turn_count}
 
 Write your reply as the victim (1-2 sentences, natural and believable):"""
 
-    # Helper to call Groq synchronously
-    def _call_groq():
-        return client.chat.completions.create(
+    try:
+        response = await groq_manager.call(
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": system_msg},
@@ -202,41 +196,22 @@ Write your reply as the victim (1-2 sentences, natural and believable):"""
             temperature=0.8
         )
 
-    # Retry with backoff for Groq rate limiting
-    max_retries = 3
-    last_error = None
-    for attempt in range(max_retries):
-        try:
-            response = await asyncio.to_thread(_call_groq)
+        reply = response.choices[0].message.content.strip()
+        reply = reply.strip('"\'')
 
-            reply = response.choices[0].message.content.strip()
-            reply = reply.strip('"\'')
+        duration = (time.time() - start_time) * 1000
+        add_log(f"[AGENT1_END] Groq reply in {duration:.2f}ms: {reply}")
 
-            duration = (time.time() - start_time) * 1000
-            add_log(f"[AGENT1_END] Groq reply in {duration:.2f}ms: {reply}")
+        return reply
 
-            return reply
+    except Exception as e:
+        tb = traceback.format_exc()
+        add_log(f"[AGENT1_ERROR] All Groq keys failed: {str(e)}")
+        add_log(f"[AGENT1_TRACEBACK] {tb}")
 
-        except Exception as e:
-            last_error = e
-            error_str = str(e)
-            tb = traceback.format_exc()
-            add_log(f"[AGENT1_ERROR] Groq failed (attempt {attempt + 1}/{max_retries}): {error_str}")
-            add_log(f"[AGENT1_TRACEBACK] {tb}")
+    add_log(f"[AGENT1_FALLBACK] Using minimal fallback")
 
-            if "429" in error_str or "rate" in error_str.lower() or "limit" in error_str.lower():
-                wait_time = (2 ** attempt)
-                add_log(f"[AGENT1_RETRY] Rate limited, waiting {wait_time}s")
-                await asyncio.sleep(wait_time)
-            else:
-                wait_time = 1
-                add_log(f"[AGENT1_RETRY] Non-rate error, retrying in {wait_time}s")
-                await asyncio.sleep(wait_time)
-
-    add_log(f"[AGENT1_FALLBACK] All {max_retries} retries exhausted, using minimal fallback")
-
-    # Minimal fallback — only used if ALL Groq retries fail
-    # Even this adapts based on what's missing
+    # Minimal fallback — only used if ALL Groq keys fail
     has_phone = bool(extracted_intelligence and extracted_intelligence.get("phoneNumbers"))
     has_upi = bool(extracted_intelligence and extracted_intelligence.get("upiIds"))
     has_bank = bool(extracted_intelligence and extracted_intelligence.get("bankAccounts"))

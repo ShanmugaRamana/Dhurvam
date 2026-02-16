@@ -164,11 +164,7 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
         
         # Generate Groq-powered conversation summary for agentNotes
         try:
-            from groq import Groq
-            from app.core.config import GROQ_API_KEY
-            
-            import asyncio as _asyncio
-            groq_client = Groq(api_key=GROQ_API_KEY)
+            from app.core.api_clients import groq_manager
             
             conversation_text = "\n".join([
                 f"{msg.get('sender', 'unknown')}: {msg.get('text', '')}"
@@ -199,17 +195,14 @@ Write a 3-4 sentence summary covering:
 
 Keep it factual and professional. Do NOT use bullet points."""
             
-            def _call_groq_summary():
-                return groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": summary_prompt}],
-                    max_tokens=200,
-                    temperature=0.3
-                )
-            
-            summary_response = await _asyncio.to_thread(_call_groq_summary)
+            summary_response = await groq_manager.call(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": summary_prompt}],
+                max_tokens=200,
+                temperature=0.3
+            )
             notes = summary_response.choices[0].message.content.strip()
-            add_log(f"[ORCHESTRATOR] Groq summary generated")
+            add_log(f"[ORCHESTRATOR] Groq summary generated (failover)")
         except Exception as e:
             add_log(f"[ORCHESTRATOR] Groq summary failed: {str(e)}, using template notes")
             # notes already has template from check_end_condition

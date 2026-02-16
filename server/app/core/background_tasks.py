@@ -67,9 +67,8 @@ async def check_inactive_sessions():
                         add_log(f"[AUTO_TIMEOUT] Session {session_id} already being processed, skipping...")
                         continue
                     
-                    # Generate summary notes
-                    from openai import OpenAI
-                    from app.core.config import OPENROUTER_API_KEY
+                    # Generate summary notes using Groq with key failover
+                    from app.core.api_clients import groq_manager
                     
                     try:
                         conversation_text = "\n".join([
@@ -78,12 +77,6 @@ async def check_inactive_sessions():
                         ])
                         
                         intel = session.get("extractedIntelligence", {})
-                        
-                        # Use Groq to generate intelligent summary
-                        from groq import Groq
-                        from app.core.config import GROQ_API_KEY
-                        
-                        groq_client = Groq(api_key=GROQ_API_KEY)
                         
                         intel_text = ""
                         if intel.get('bankAccounts'):
@@ -109,7 +102,7 @@ Write a 3-4 sentence summary covering:
 Keep it factual and professional. Do NOT use bullet points."""
 
                         try:
-                            summary_response = groq_client.chat.completions.create(
+                            summary_response = await groq_manager.call(
                                 model="llama-3.3-70b-versatile",
                                 messages=[{"role": "user", "content": summary_prompt}],
                                 max_tokens=200,
@@ -117,7 +110,7 @@ Keep it factual and professional. Do NOT use bullet points."""
                             )
                             agent_notes = summary_response.choices[0].message.content.strip()
                         except Exception as groq_err:
-                            add_log(f"[AUTO_TIMEOUT] Groq summary failed: {str(groq_err)}, using template")
+                            add_log(f"[AUTO_TIMEOUT] All Groq keys failed: {str(groq_err)}, using template")
                             # Fallback to template
                             has_intel = any([intel.get('bankAccounts'), intel.get('upiIds'), intel.get('phoneNumbers')])
                             if has_intel:
