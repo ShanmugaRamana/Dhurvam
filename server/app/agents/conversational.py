@@ -245,18 +245,57 @@ Write your reply as the victim (1-2 sentences, natural and believable):"""
         add_log(f"[AGENT1_ERROR] All Groq keys failed: {str(e)}")
         add_log(f"[AGENT1_TRACEBACK] {tb}")
 
-    add_log(f"[AGENT1_FALLBACK] Using minimal fallback")
+    # ── FALLBACK 1: Try smaller Groq model ──
+    try:
+        add_log(f"[AGENT1_FALLBACK_GROQ] Trying smaller model llama-3.1-8b-instant")
+        response = await groq_manager.call(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=60,
+            temperature=0.8
+        )
+        reply = response.choices[0].message.content.strip().strip('"\'')
+        duration = (time.time() - start_time) * 1000
+        add_log(f"[AGENT1_END] Groq 8B fallback reply in {duration:.2f}ms: {reply}")
+        return reply
+    except Exception as e2:
+        add_log(f"[AGENT1_FALLBACK_GROQ_FAIL] 8B model also failed: {str(e2)[:80]}")
 
-    # Minimal fallback — only used if ALL Groq keys fail
+    # ── FALLBACK 2: Use OpenRouter (free Gemini) ──
+    try:
+        from app.core.api_clients import openrouter_manager
+        add_log(f"[AGENT1_FALLBACK_OR] Trying OpenRouter Gemini")
+        response = await openrouter_manager.call(
+            model="google/gemini-2.0-flash-exp:free",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=80,
+            temperature=0.8
+        )
+        reply = response.choices[0].message.content.strip().strip('"\'')
+        duration = (time.time() - start_time) * 1000
+        add_log(f"[AGENT1_END] OpenRouter fallback reply in {duration:.2f}ms: {reply}")
+        return reply
+    except Exception as e3:
+        add_log(f"[AGENT1_FALLBACK_OR_FAIL] OpenRouter also failed: {str(e3)[:80]}")
+
+    add_log(f"[AGENT1_FALLBACK] Using minimal last-resort fallback")
+
+    # ── FALLBACK 3: Last resort hardcoded — only if ALL LLMs fail ──
     has_phone = bool(extracted_intelligence and extracted_intelligence.get("phoneNumbers"))
     has_upi = bool(extracted_intelligence and extracted_intelligence.get("upiIds"))
     has_bank = bool(extracted_intelligence and extracted_intelligence.get("bankAccounts"))
 
     if not has_phone:
-        return "Can you give me a number to reach you? I want to sort this out quickly."
+        return "Sir please give me your phone number so I can call you directly, this is very urgent for me!"
     elif not has_upi and not has_bank:
-        return "I'm ready to proceed. Where should I send the payment?"
+        return "I am very worried, please tell me your UPI ID or bank account number so I can transfer the amount immediately!"
     elif not has_bank:
-        return "UPI is showing an error on my side. Can I do a bank transfer instead?"
+        return "Sir my UPI is not working, error aa raha hai. Can you please share your bank account number? I will do NEFT transfer right now."
     else:
-        return "OK, I'm working on it. Give me a moment."
+        return "I am trying to complete the transfer, it is taking some time. Can you please confirm your details once more?"
