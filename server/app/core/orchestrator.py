@@ -46,6 +46,7 @@ async def start_orchestration(session_id: str, message_text: str, metadata: dict
             "upiIds": [],
             "phishingLinks": [],
             "phoneNumbers": [],
+            "emailAddresses": [],
             "suspiciousKeywords": []
         },
         "totalMessages": 1,
