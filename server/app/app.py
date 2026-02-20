@@ -137,7 +137,7 @@ async def echo_request(request: Request):
     try:
         import json
         body_json = json.loads(body)
-    except:
+    except (json.JSONDecodeError, ValueError):
         body_json = body.decode('utf-8')
     
     add_log(f"[ECHO] Received request: {body_json}")

@@ -12,6 +12,45 @@ from app.agents.extraction import extract_intelligence, merge_intelligence
 from app.agents.end_detection import check_end_condition
 
 
+def _classify_scam_type(message_text: str) -> str:
+    """
+    Classify the scam type based on message content patterns.
+    
+    Args:
+        message_text: The scammer's message text.
+    
+    Returns:
+        A string label for the scam type (e.g. 'bank_fraud', 'phishing').
+    """
+    text_lower = message_text.lower()
+    
+    # Bank / account fraud
+    if any(kw in text_lower for kw in ["bank", "account", "kyc", "sbi", "hdfc", "icici", "axis", "upi", "neft", "ifsc"]):
+        return "bank_fraud"
+    # UPI fraud
+    if any(kw in text_lower for kw in ["upi", "paytm", "phonepe", "gpay", "google pay"]):
+        return "upi_fraud"
+    # Phishing
+    if any(kw in text_lower for kw in ["click", "verify", "update", "link", "bit.ly", "tinyurl"]):
+        return "phishing"
+    # Lottery / prize scam
+    if any(kw in text_lower for kw in ["lottery", "prize", "won", "winner", "congratulations", "claim"]):
+        return "lottery_scam"
+    # Job scam
+    if any(kw in text_lower for kw in ["job", "work from home", "earn", "salary", "hiring", "recruitment"]):
+        return "job_scam"
+    # OTP / identity theft
+    if any(kw in text_lower for kw in ["otp", "pin", "cvv", "password", "credential"]):
+        return "identity_theft"
+    # Insurance / policy scam
+    if any(kw in text_lower for kw in ["insurance", "policy", "premium", "claim"]):
+        return "insurance_scam"
+    # Generic threat / urgency
+    if any(kw in text_lower for kw in ["urgent", "immediately", "blocked", "suspended", "legal action"]):
+        return "threat_scam"
+    
+    return "unknown"
+
 async def start_orchestration(session_id: str, message_text: str, metadata: dict) -> dict:
     """
     Start a new orchestration session for detected scammer.
@@ -52,7 +91,9 @@ async def start_orchestration(session_id: str, message_text: str, metadata: dict
         },
         "totalMessages": 1,
         "agentNotes": "",
-        "endReason": None
+        "endReason": None,
+        "scamType": _classify_scam_type(message_text),
+        "confidenceLevel": 0.85
     }
     
     # Extract intelligence from first message (contextual with Mistral)
@@ -110,7 +151,9 @@ async def start_orchestration(session_id: str, message_text: str, metadata: dict
         "engagementMetrics": {
             "engagementDurationSeconds": duration,
             "totalMessagesExchanged": max(session["totalMessages"], 5)
-        }
+        },
+        "scamType": session.get("scamType", "unknown"),
+        "confidenceLevel": session.get("confidenceLevel", 0.85)
     }
 
 
@@ -299,7 +342,9 @@ Keep it factual and professional. Do NOT use bullet points."""
             "engagementMetrics": {
                 "engagementDurationSeconds": duration_secs,
                 "totalMessagesExchanged": max(session["totalMessages"], 5)
-            }
+            },
+            "scamType": session.get("scamType", "unknown"),
+            "confidenceLevel": session.get("confidenceLevel", 0.85)
         }
     
     # Continue session (normal flow or already finalized)
@@ -344,7 +389,9 @@ Keep it factual and professional. Do NOT use bullet points."""
         "engagementMetrics": {
             "engagementDurationSeconds": duration_secs,
             "totalMessagesExchanged": max(session["totalMessages"], 5)
-        }
+        },
+        "scamType": session.get("scamType", "unknown"),
+        "confidenceLevel": session.get("confidenceLevel", 0.85)
     }
 
 

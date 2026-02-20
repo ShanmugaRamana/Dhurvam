@@ -244,7 +244,9 @@ async def detect_scam(request: DetectRequest):
                 "engagementMetrics": {
                     "engagementDurationSeconds": duration_secs,
                     "totalMessagesExchanged": max(existing_session.get("totalMessages", 0), 5)
-                }
+                },
+                "scamType": existing_session.get("scamType", "unknown"),
+                "confidenceLevel": existing_session.get("confidenceLevel", 0.85)
             }
         
         # New message → Initial detection
@@ -570,7 +572,9 @@ Your summary:"""
         "engagementMetrics": {
             "engagementDurationSeconds": duration_secs,
             "totalMessagesExchanged": max(final_session.get("totalMessages", 0), 5)
-        }
+        },
+        "scamType": final_session.get("scamType", "unknown"),
+        "confidenceLevel": final_session.get("confidenceLevel", 0.85)
     }
     
     return final_output
