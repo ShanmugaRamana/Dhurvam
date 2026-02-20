@@ -156,32 +156,11 @@ graph LR
 
 ## 3-Agent System
 
-### Agent 1: Conversational Honeypot
-- **Provider**: Groq (LLaMA 3.3 70B Versatile)
-- **Purpose**: Acts as a believable victim persona to engage scammers
-- **Features**:
-  - Dynamic strategy per conversation turn (build trust → probe → extract)
-  - Aggressive targeted questioning to extract contact info and payment details
-  - Tone adaptation (panic for threats, excitement for offers)
-  - Repetition avoidance across turns
-  - Multi-key failover for resilience
-
-### Agent 2: Intelligence Extraction
-- **Provider**: Mistral AI + Python Regex
-- **Purpose**: Extract structured intelligence from scammer messages
-- **Extracts**:
-  - Bank account numbers (11-18 digit, 16-digit cards)
-  - UPI IDs (`user@bank` format)
-  - Phone numbers (Indian +91 and 10-digit)
-  - Phishing links (HTTP/S, shorteners)
-  - Email addresses
-  - Suspicious keywords (urgency, threats, prizes)
-- **Approach**: Fast regex first pass → Mistral contextual validation → Rule-based boost
-
-### Agent 3: End Detection
-- **Provider**: OpenRouter (Google Gemini 2.0 Flash)
-- **Purpose**: Decides when sufficient intelligence has been gathered
-- **Logic**: Based on intel type count + message count thresholds
+| Agent | Provider | Purpose | Key Features |
+|-------|----------|---------|--------------|
+| **Agent 1 — Conversational** | Groq (LLaMA 3.3 70B) | Acts as a believable victim to engage scammers | Dynamic strategy (trust → probe → extract), tone adaptation, multi-key failover |
+| **Agent 2 — Extraction** | Mistral AI + Python Regex | Extracts structured intel (bank accounts, UPI IDs, phones, links, emails, keywords) | Regex first pass → Mistral contextual validation → rule-based boost |
+| **Agent 3 — End Detection** | OpenRouter (Gemini 2.0 Flash) | Decides when enough intelligence has been gathered | Intel type count + message count thresholds, 50-msg safety cap |
 
 ## Scam Detection
 
@@ -233,11 +212,6 @@ Dhurvam/
 │   ├── Dockerfile                 # Docker deployment
 │   ├── requirements.txt           # Python dependencies
 │   └── .env.example               # Environment template
-├── web/                           # Node.js Frontend
-│   ├── server.js                  # Express server
-│   ├── routes/                    # Proxy routes to backend
-│   ├── views/                     # EJS templates
-│   └── public/                    # Static assets (CSS, JS)
 └── README.md
 ```
 
