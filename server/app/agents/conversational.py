@@ -14,7 +14,7 @@ import traceback
 def _build_intelligence_status(extracted_intelligence: dict) -> str:
     """Build a status of what has been collected vs what is still needed."""
     if not extracted_intelligence:
-        return "COLLECTED: Nothing yet.\nSTILL NEEDED: Bank Account, UPI ID, Phone Number."
+        return "COLLECTED: Nothing yet.\nSTILL NEEDED: Bank Account, UPI ID, Phone Number, Email Address."
 
     collected = []
     missing = []
@@ -36,6 +36,8 @@ def _build_intelligence_status(extracted_intelligence: dict) -> str:
 
     if extracted_intelligence.get("emailAddresses"):
         collected.append(f"Email: {', '.join(extracted_intelligence['emailAddresses'])}")
+    else:
+        missing.append("Email Address")
 
     if extracted_intelligence.get("phishingLinks"):
         collected.append(f"Links: {', '.join(extracted_intelligence['phishingLinks'])}")
@@ -57,6 +59,7 @@ def _get_strategy(turn_count: int, extracted_intelligence: dict) -> str:
     has_phone = bool(extracted_intelligence and extracted_intelligence.get("phoneNumbers"))
     has_upi = bool(extracted_intelligence and extracted_intelligence.get("upiIds"))
     has_bank = bool(extracted_intelligence and extracted_intelligence.get("bankAccounts"))
+    has_email = bool(extracted_intelligence and extracted_intelligence.get("emailAddresses"))
 
     missing = []
     if not has_phone:
@@ -65,6 +68,8 @@ def _get_strategy(turn_count: int, extracted_intelligence: dict) -> str:
         missing.append("UPI ID")
     if not has_bank:
         missing.append("bank account")
+    if not has_email:
+        missing.append("email address")
 
     # Turn 0 — react AND immediately probe
     if turn_count <= 0:
@@ -102,6 +107,8 @@ def _get_strategy(turn_count: int, extracted_intelligence: dict) -> str:
                 specific_asks.append("Offer to PAY — 'Tell me your UPI ID, I'll send it now.'")
             if "bank account" in missing:
                 specific_asks.append("Mention UPI issues — 'UPI is failing, give me bank account number for NEFT.'")
+            if "email address" in missing:
+                specific_asks.append("Ask for EMAIL — 'Can you also send the details to my email? What is your email address so I can write to you?'")
             ask_hint = " OR ".join(specific_asks)
         else:
             ask_hint = "Gather more details — ask about their process, department, or verify their identity."
@@ -110,7 +117,7 @@ def _get_strategy(turn_count: int, extracted_intelligence: dict) -> str:
             f"STRATEGY: Mid-conversation. The scammer is invested. "
             f"Be VERY cooperative and eager. {ask_hint} "
             f"IMPORTANT: Every reply must end with a QUESTION or REQUEST that pushes the scammer to share more details. "
-            f"Do NOT just agree passively. Ask for specifics: who to contact, where to pay, what account to use."
+            f"Do NOT just agree passively. Ask for specifics: who to contact, where to pay, what account to use, what email to write to."
         )
 
     # Turn 4+ — push hard for remaining info
@@ -120,7 +127,9 @@ def _get_strategy(turn_count: int, extracted_intelligence: dict) -> str:
             f"Use CREATIVE tactics: mention technical problems that require them to share details. "
             f"Examples: 'My bank app crashed, can you give me account number for manual transfer?', "
             f"'Internet is slow, can I call you on your number?', "
-            f"'UPI showing error, I'll do bank transfer instead — give me IFSC and account number'. "
+            f"'UPI showing error, I'll do bank transfer instead — give me IFSC and account number', "
+            f"'Can you email me the confirmation? What is your email address?', "
+            f"'I want to send you the screenshot by email, what email should I use?'. "
             f"Sound frustrated but willing. MUST get these details NOW."
         )
 
