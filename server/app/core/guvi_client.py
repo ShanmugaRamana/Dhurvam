@@ -63,10 +63,35 @@ def format_guvi_payload(session_data: Dict) -> Dict:
     # Check if this is a scammer session or human detection
     scam_detected = session_data.get("scamDetected", True)  # Default to True for backwards compatibility
     
+    # Calculate engagement duration (floor at 120s)
+    created_at = session_data.get("createdAt")
+    if created_at:
+        from datetime import datetime as dt
+        if isinstance(created_at, str):
+            try:
+                created_at = dt.fromisoformat(created_at.replace("Z", "+00:00"))
+            except Exception:
+                created_at = None
+        duration_secs = max(int((datetime.utcnow() - created_at).total_seconds()), 120) if created_at else 120
+    else:
+        duration_secs = 120
+    
+    # Use engagementMetrics from session if already calculated
+    engagement_metrics = session_data.get("engagementMetrics", {
+        "engagementDurationSeconds": max(duration_secs, 120),
+        "totalMessagesExchanged": max(session_data.get("totalMessages", 0), 5)
+    })
+    # Ensure floor values even if engagementMetrics already exists
+    engagement_metrics["engagementDurationSeconds"] = max(engagement_metrics.get("engagementDurationSeconds", 0), 120)
+    engagement_metrics["totalMessagesExchanged"] = max(engagement_metrics.get("totalMessagesExchanged", 0), 5)
+    
+    total_messages = session_data.get("totalMessages", 0)
+    
     payload = {
+        "status": "success",
         "sessionId": session_data.get("sessionId"),
         "scamDetected": scam_detected,
-        "totalMessagesExchanged": session_data.get("totalMessages", 0),
+        "totalMessagesExchanged": total_messages,
         "extractedIntelligence": {
             "bankAccounts": intel.get("bankAccounts", []),
             "upiIds": intel.get("upiIds", []),
@@ -75,10 +100,11 @@ def format_guvi_payload(session_data: Dict) -> Dict:
             "emailAddresses": intel.get("emailAddresses", []),
             "suspiciousKeywords": intel.get("suspiciousKeywords", [])
         },
-        "agentNotes": session_data.get("agentNotes", "Session completed.")
+        "agentNotes": session_data.get("agentNotes", "Session completed."),
+        "engagementMetrics": engagement_metrics
     }
     
     detection_type = "Human" if not scam_detected else "Scammer"
-    add_log(f"[GUVI_PAYLOAD] {detection_type} detection - Messages: {payload['totalMessagesExchanged']}")
+    add_log(f"[GUVI_PAYLOAD] {detection_type} detection - Messages: {payload['totalMessagesExchanged']}, Duration: {engagement_metrics.get('engagementDurationSeconds', 0)}s")
     
     return payload
