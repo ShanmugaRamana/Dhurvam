@@ -32,7 +32,7 @@ graph TB
         end
 
         subgraph Agents["fa:fa-robot 3-Agent System"]
-            Agent1["Agent 1: Conversational<br/><i>Groq — LLaMA 3.3 70B</i>"]
+            Agent1["Agent 1: Conversational<br/><i>LLaMA 3.3 70B</i>"]
             Agent2["Agent 2: Extraction<br/><i>Mistral AI + Regex</i>"]
             Agent3["Agent 3: End Detection<br/><i>OpenRouter — Gemini 2.0 Flash</i>"]
         end
@@ -40,7 +40,6 @@ graph TB
 
     subgraph External["fa:fa-cloud External Services"]
         MongoDB[(MongoDB Atlas)]
-        GroqAPI["Groq API"]
         MistralAPI["Mistral API"]
         OpenRouterAPI["OpenRouter API"]
         GUVIEndpoint["GUVI Hackathon<br/>Evaluation Endpoint"]
@@ -63,7 +62,6 @@ graph TB
     Agent3 --> OpenRouterAPI
 
     %% API Clients to External
-    APIClients --> GroqAPI
     APIClients --> MistralAPI
     APIClients --> OpenRouterAPI
 
@@ -127,7 +125,7 @@ graph LR
 
     subgraph Pipeline["Orchestrator Pipeline (per turn)"]
         direction LR
-        A1["fa:fa-theater-masks Agent 1<br/><b>Conversational</b><br/><i>Groq / LLaMA 3.3 70B</i><br/><br/>- Build trust then Probe then Extract<br/>- Tone adaptation<br/>- Multi-key failover"]
+        A1["fa:fa-theater-masks Agent 1<br/><b>Conversational</b><br/><i>LLaMA 3.3 70B</i><br/><br/>- Build trust then Probe then Extract<br/>- Tone adaptation<br/>- Multi-key failover"]
         A2["fa:fa-search Agent 2<br/><b>Extraction</b><br/><i>Mistral AI + Regex</i><br/><br/>- Regex first pass<br/>- Mistral contextual validation<br/>- Rule-based boost"]
         A3["fa:fa-clock Agent 3<br/><b>End Detection</b><br/><i>OpenRouter / Gemini 2.0</i><br/><br/>- Intel type count >= 2<br/>- Message count thresholds<br/>- 50-msg safety cap"]
     end
@@ -147,18 +145,17 @@ graph LR
 | Component | Technology |
 |-----------|-----------|
 | **Backend API** | FastAPI (Python 3.11+) |
-| **Agent 1 - Conversational** | Groq API (LLaMA 3.3 70B) with multi-key failover |
+| **Agent 1 - Conversational** | LLaMA 3.3 70B with multi-key failover |
 | **Agent 2 - Extraction** | Mistral AI + Python Regex (hybrid approach) |
 | **Agent 3 - End Detection** | OpenRouter (Gemini 2.0 Flash) |
 | **Database** | MongoDB Atlas |
-| **Frontend** | Node.js, Express, EJS templates |
-| **Deployment** | Docker, Render (backend), Vercel (frontend) |
+| **Deployment** | Docker, Render |
 
 ## 3-Agent System
 
 | Agent | Provider | Purpose | Key Features |
 |-------|----------|---------|--------------|
-| **Agent 1 — Conversational** | LLaMA 3.3 70B| Acts as a believable victim to engage scammers | Dynamic strategy (trust → probe → extract), tone adaptation, multi-key failover |
+| **Agent 1 — Conversational** | LLaMA 3.3 70B | Acts as a believable victim to engage scammers | Dynamic strategy (trust → probe → extract), tone adaptation, multi-key failover |
 | **Agent 2 — Extraction** | Mistral AI + Python Regex | Extracts structured intel (bank accounts, UPI IDs, phones, links, emails, keywords) | Regex first pass → Mistral contextual validation → rule-based boost |
 | **Agent 3 — End Detection** | Gemini 2.0 Flash | Decides when enough intelligence has been gathered | Intel type count + message count thresholds, 50-msg safety cap |
 
@@ -219,9 +216,8 @@ Dhurvam/
 
 ### Prerequisites
 - Python 3.11+
-- Node.js 18+
 - MongoDB Atlas account
-- API keys: Groq, Mistral, OpenRouter
+- API keys: Mistral, OpenRouter
 
 ### Backend
 ```bash
@@ -232,14 +228,6 @@ cp .env.example .env
 python main.py
 ```
 
-### Frontend
-```bash
-cd web
-npm install
-cp .env.example .env
-# Edit .env with backend URL
-node server.js
-```
 
 ### Docker
 ```bash
@@ -250,7 +238,7 @@ docker run -p 8000:8000 --env-file .env dhurvam-api
 
 ## Error Handling
 
-- **Multi-key failover**: Each AI provider (Groq, Mistral, OpenRouter) supports multiple API keys with automatic rotation on failure
+- **Multi-key failover**: Each AI provider (Mistral, OpenRouter) supports multiple API keys with automatic rotation on failure
 - **Timeout detection**: Background task checks for 15-second inactivity
 - **Graceful degradation**: If all LLM keys fail, minimal fallback responses maintain engagement
 - **Request logging**: Full middleware logging for debugging
