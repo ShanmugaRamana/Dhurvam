@@ -158,9 +158,9 @@ graph LR
 
 | Agent | Provider | Purpose | Key Features |
 |-------|----------|---------|--------------|
-| **Agent 1 — Conversational** | Groq (LLaMA 3.3 70B) | Acts as a believable victim to engage scammers | Dynamic strategy (trust → probe → extract), tone adaptation, multi-key failover |
+| **Agent 1 — Conversational** | LLaMA 3.3 70B| Acts as a believable victim to engage scammers | Dynamic strategy (trust → probe → extract), tone adaptation, multi-key failover |
 | **Agent 2 — Extraction** | Mistral AI + Python Regex | Extracts structured intel (bank accounts, UPI IDs, phones, links, emails, keywords) | Regex first pass → Mistral contextual validation → rule-based boost |
-| **Agent 3 — End Detection** | OpenRouter (Gemini 2.0 Flash) | Decides when enough intelligence has been gathered | Intel type count + message count thresholds, 50-msg safety cap |
+| **Agent 3 — End Detection** | Gemini 2.0 Flash | Decides when enough intelligence has been gathered | Intel type count + message count thresholds, 50-msg safety cap |
 
 ## Scam Detection
 
