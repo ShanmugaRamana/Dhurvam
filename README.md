@@ -8,39 +8,27 @@
 
 ```mermaid
 graph TB
-    subgraph Frontend["fa:fa-globe Node.js Frontend (Express + EJS)"]
-        direction TB
-        ServerJS["server.js<br/><i>Express App</i>"]
-        subgraph Pages["Views"]
-            Landing["home.ejs<br/><i>Landing Page</i>"]
-            Login["login.ejs<br/><i>Admin Login</i>"]
-        end
-        subgraph ProxyRoutes["Proxy Routes"]
-            ApiProxy["api.js<br/><i>→ /detect, /sessions, /logs</i>"]
-            AuthProxy["auth.js<br/><i>→ Authentication</i>"]
-            PageRoutes["pages.js<br/><i>→ Page Rendering</i>"]
-        end
-        StaticAssets["public/<br/><i>CSS + JS Assets</i>"]
-    end
+    Client["fa:fa-paper-plane Incoming HTTP Request<br/><i>POST /detect</i>"]
 
-    subgraph Backend["fa:fa-cogs FastAPI Backend (Python 3.11+)"]
+    subgraph Server["fa:fa-cogs FastAPI Server (Python 3.11+)"]
         direction TB
         AppFactory["app.py<br/><i>FastAPI App Factory</i>"]
-        Middleware["Request Logging<br/>Middleware + CORS"]
+        Middleware["fa:fa-shield Request Logging<br/>Middleware + CORS"]
 
-        subgraph Routes["API Routes"]
+        subgraph Routes["fa:fa-route API Routes"]
             DetectRoute["detect.py<br/><i>POST /detect</i>"]
             AuthRoute["auth.py<br/><i>Authentication</i>"]
             LogsRoute["logs.py<br/><i>GET /logs</i>"]
         end
 
-        subgraph Core["Core Services"]
+        subgraph Core["fa:fa-microchip Core Services"]
             Orchestrator["orchestrator.py<br/><i>Agent Coordinator</i>"]
             APIClients["api_clients.py<br/><i>Multi-Key Failover</i>"]
             Config["config.py"]
             Security["security.py<br/><i>API Key Auth</i>"]
             BGTasks["background_tasks.py<br/><i>Auto-Timeout (45s)</i>"]
             Logger["logger.py"]
+            GUVIClient["guvi_client.py<br/><i>Hackathon Submission</i>"]
         end
 
         subgraph Agents["fa:fa-robot 3-Agent System"]
@@ -58,11 +46,11 @@ graph TB
         GUVIEndpoint["GUVI Hackathon<br/>Evaluation Endpoint"]
     end
 
-    %% Frontend to Backend
-    ApiProxy -- "HTTP Proxy<br/>(x-api-key)" --> AppFactory
-
-    %% Backend internal flow
+    %% Entry point
+    Client --> AppFactory
     AppFactory --> Middleware --> Routes
+
+    %% Internal flow
     DetectRoute --> Orchestrator
     Orchestrator --> Agent1
     Orchestrator --> Agent2
@@ -79,23 +67,23 @@ graph TB
     APIClients --> MistralAPI
     APIClients --> OpenRouterAPI
 
-    %% Data persistence
+    %% Data persistence & submission
     Orchestrator --> MongoDB
-    Orchestrator -- "Submit results" --> GUVIEndpoint
+    GUVIClient -- "Submit results" --> GUVIEndpoint
 
-    style Frontend fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
-    style Backend fill:#0f3460,stroke:#16213e,color:#e0e0e0
+    style Server fill:#0f3460,stroke:#16213e,color:#e0e0e0
     style Agents fill:#533483,stroke:#16213e,color:#e0e0e0
     style External fill:#1a1a2e,stroke:#e94560,color:#e0e0e0
+    style Core fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
+    style Routes fill:#16213e,stroke:#0f3460,color:#e0e0e0
 ```
 
 ### Request Flow — Scam Detection & Engagement
 
 ```mermaid
 sequenceDiagram
-    participant S as Scammer / GUVI
-    participant FE as Node.js Frontend
-    participant API as FastAPI Backend
+    participant C as Client
+    participant API as FastAPI Server
     participant D as Detect Route
     participant O as Orchestrator
     participant A1 as Agent 1 — Conversational
@@ -104,16 +92,13 @@ sequenceDiagram
     participant DB as MongoDB Atlas
     participant G as GUVI Endpoint
 
-    S->>FE: POST /api/detect (message)
-    FE->>API: Proxy → POST /api/honeypot/detect
-    API->>D: Route handler
+    C->>API: POST /detect (message + sessionId)
+    API->>D: Middleware → Route handler
 
     D->>D: 4-Step Scam Detection<br/>(Brand → Action → Threat → Link)
 
     alt Message is Human
-        D-->>API: {action: "ignore", classification: "Human"}
-        API-->>FE: Forward response
-        FE-->>S: Human — No engagement
+        D-->>C: {action: "ignore", classification: "Human"}
     else Message is Scammer
         D->>O: start_orchestration() or<br/>continue_orchestration()
         O->>DB: Create / fetch session
@@ -130,10 +115,7 @@ sequenceDiagram
             Note over O: Session stays ACTIVE<br/>until 45s timeout
         end
 
-        O-->>D: {action: "engage", reply, intelligence}
-        D-->>API: Response
-        API-->>FE: Forward response
-        FE-->>S: Honeypot reply
+        O-->>C: {action: "engage", reply, intelligence}
     end
 ```
 
@@ -145,9 +127,9 @@ graph LR
 
     subgraph Pipeline["Orchestrator Pipeline (per turn)"]
         direction LR
-        A1["fa:fa-theater-masks Agent 1<br/><b>Conversational</b><br/><i>Groq / LLaMA 3.3 70B</i><br/><br/>• Build trust → Probe → Extract<br/>• Tone adaptation<br/>• Multi-key failover"]
-        A2["fa:fa-search Agent 2<br/><b>Extraction</b><br/><i>Mistral AI + Regex</i><br/><br/>• Regex first pass<br/>• Mistral contextual validation<br/>• Rule-based boost"]
-        A3["fa:fa-clock Agent 3<br/><b>End Detection</b><br/><i>OpenRouter / Gemini 2.0</i><br/><br/>• Intel type count ≥ 2<br/>• Message count thresholds<br/>• 50-msg safety cap"]
+        A1["fa:fa-theater-masks Agent 1<br/><b>Conversational</b><br/><i>Groq / LLaMA 3.3 70B</i><br/><br/>- Build trust then Probe then Extract<br/>- Tone adaptation<br/>- Multi-key failover"]
+        A2["fa:fa-search Agent 2<br/><b>Extraction</b><br/><i>Mistral AI + Regex</i><br/><br/>- Regex first pass<br/>- Mistral contextual validation<br/>- Rule-based boost"]
+        A3["fa:fa-clock Agent 3<br/><b>End Detection</b><br/><i>OpenRouter / Gemini 2.0</i><br/><br/>- Intel type count >= 2<br/>- Message count thresholds<br/>- 50-msg safety cap"]
     end
 
     A1 --> A2 --> A3
