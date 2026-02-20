@@ -4,33 +4,160 @@
 
 ## Architecture
 
+### System Overview
+
+```mermaid
+graph TB
+    subgraph Frontend["fa:fa-globe Node.js Frontend (Express + EJS)"]
+        direction TB
+        ServerJS["server.js<br/><i>Express App</i>"]
+        subgraph Pages["Views"]
+            Landing["home.ejs<br/><i>Landing Page</i>"]
+            Login["login.ejs<br/><i>Admin Login</i>"]
+        end
+        subgraph ProxyRoutes["Proxy Routes"]
+            ApiProxy["api.js<br/><i>→ /detect, /sessions, /logs</i>"]
+            AuthProxy["auth.js<br/><i>→ Authentication</i>"]
+            PageRoutes["pages.js<br/><i>→ Page Rendering</i>"]
+        end
+        StaticAssets["public/<br/><i>CSS + JS Assets</i>"]
+    end
+
+    subgraph Backend["fa:fa-cogs FastAPI Backend (Python 3.11+)"]
+        direction TB
+        AppFactory["app.py<br/><i>FastAPI App Factory</i>"]
+        Middleware["Request Logging<br/>Middleware + CORS"]
+
+        subgraph Routes["API Routes"]
+            DetectRoute["detect.py<br/><i>POST /detect</i>"]
+            AuthRoute["auth.py<br/><i>Authentication</i>"]
+            LogsRoute["logs.py<br/><i>GET /logs</i>"]
+        end
+
+        subgraph Core["Core Services"]
+            Orchestrator["orchestrator.py<br/><i>Agent Coordinator</i>"]
+            APIClients["api_clients.py<br/><i>Multi-Key Failover</i>"]
+            Config["config.py"]
+            Security["security.py<br/><i>API Key Auth</i>"]
+            BGTasks["background_tasks.py<br/><i>Auto-Timeout (45s)</i>"]
+            Logger["logger.py"]
+        end
+
+        subgraph Agents["fa:fa-robot 3-Agent System"]
+            Agent1["Agent 1: Conversational<br/><i>Groq — LLaMA 3.3 70B</i>"]
+            Agent2["Agent 2: Extraction<br/><i>Mistral AI + Regex</i>"]
+            Agent3["Agent 3: End Detection<br/><i>OpenRouter — Gemini 2.0 Flash</i>"]
+        end
+    end
+
+    subgraph External["fa:fa-cloud External Services"]
+        MongoDB[(MongoDB Atlas)]
+        GroqAPI["Groq API"]
+        MistralAPI["Mistral API"]
+        OpenRouterAPI["OpenRouter API"]
+        GUVIEndpoint["GUVI Hackathon<br/>Evaluation Endpoint"]
+    end
+
+    %% Frontend to Backend
+    ApiProxy -- "HTTP Proxy<br/>(x-api-key)" --> AppFactory
+
+    %% Backend internal flow
+    AppFactory --> Middleware --> Routes
+    DetectRoute --> Orchestrator
+    Orchestrator --> Agent1
+    Orchestrator --> Agent2
+    Orchestrator --> Agent3
+    BGTasks -- "Auto-close<br/>inactive sessions" --> MongoDB
+
+    %% Agent to API Clients
+    Agent1 --> APIClients
+    Agent2 --> APIClients
+    Agent3 --> OpenRouterAPI
+
+    %% API Clients to External
+    APIClients --> GroqAPI
+    APIClients --> MistralAPI
+    APIClients --> OpenRouterAPI
+
+    %% Data persistence
+    Orchestrator --> MongoDB
+    Orchestrator -- "Submit results" --> GUVIEndpoint
+
+    style Frontend fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
+    style Backend fill:#0f3460,stroke:#16213e,color:#e0e0e0
+    style Agents fill:#533483,stroke:#16213e,color:#e0e0e0
+    style External fill:#1a1a2e,stroke:#e94560,color:#e0e0e0
 ```
-┌─────────────────────────────────────────────────────┐
-│                    Dhurvam System                     │
-├──────────────────────┬──────────────────────────────┤
-│   FastAPI Backend    │    Node.js Frontend           │
-│   (Python 3.11+)    │    (Express + EJS)             │
-│                      │                                │
-│  ┌────────────────┐  │  ┌──────────────────────────┐ │
-│  │ Agent 1:       │  │  │ Admin Portal              │ │
-│  │ Conversational │  │  │ - Session monitoring      │ │
-│  │ (Groq/LLaMA)   │  │  │ - Intelligence dashboard  │ │
-│  ├────────────────┤  │  │ - Real-time logs          │ │
-│  │ Agent 2:       │  │  └──────────────────────────┘ │
-│  │ Extraction     │  │                                │
-│  │ (Mistral+Regex)│  │  ┌──────────────────────────┐ │
-│  ├────────────────┤  │  │ Landing Page              │ │
-│  │ Agent 3:       │  │  │ - Project showcase        │ │
-│  │ End Detection  │  │  └──────────────────────────┘ │
-│  │ (OpenRouter)   │  │                                │
-│  └────────────────┘  │                                │
-│                      │                                │
-│  ┌────────────────┐  │                                │
-│  │ Orchestrator   │  │                                │
-│  │ + MongoDB      │  │                                │
-│  │ + GUVI Client  │  │                                │
-│  └────────────────┘  │                                │
-└──────────────────────┴──────────────────────────────┘
+
+### Request Flow — Scam Detection & Engagement
+
+```mermaid
+sequenceDiagram
+    participant S as Scammer / GUVI
+    participant FE as Node.js Frontend
+    participant API as FastAPI Backend
+    participant D as Detect Route
+    participant O as Orchestrator
+    participant A1 as Agent 1 — Conversational
+    participant A2 as Agent 2 — Extraction
+    participant A3 as Agent 3 — End Detection
+    participant DB as MongoDB Atlas
+    participant G as GUVI Endpoint
+
+    S->>FE: POST /api/detect (message)
+    FE->>API: Proxy → POST /api/honeypot/detect
+    API->>D: Route handler
+
+    D->>D: 4-Step Scam Detection<br/>(Brand → Action → Threat → Link)
+
+    alt Message is Human
+        D-->>API: {action: "ignore", classification: "Human"}
+        API-->>FE: Forward response
+        FE-->>S: Human — No engagement
+    else Message is Scammer
+        D->>O: start_orchestration() or<br/>continue_orchestration()
+        O->>DB: Create / fetch session
+        O->>A1: generate_reply(message, history, intel)
+        A1-->>O: Honeypot reply
+        O->>A2: extract_intelligence(message)
+        A2-->>O: Structured intel (bank, UPI, phone, links)
+        O->>DB: Merge & persist intelligence
+        O->>A3: check_end_condition(count, intel)
+        A3-->>O: Continue / Ready to finalize
+
+        alt Ready to finalize
+            O->>G: submit_final_result(session)
+            Note over O: Session stays ACTIVE<br/>until 45s timeout
+        end
+
+        O-->>D: {action: "engage", reply, intelligence}
+        D-->>API: Response
+        API-->>FE: Forward response
+        FE-->>S: Honeypot reply
+    end
+```
+
+### 3-Agent Orchestration Pipeline
+
+```mermaid
+graph LR
+    MSG["fa:fa-envelope Incoming<br/>Scammer Message"] --> A1
+
+    subgraph Pipeline["Orchestrator Pipeline (per turn)"]
+        direction LR
+        A1["fa:fa-theater-masks Agent 1<br/><b>Conversational</b><br/><i>Groq / LLaMA 3.3 70B</i><br/><br/>• Build trust → Probe → Extract<br/>• Tone adaptation<br/>• Multi-key failover"]
+        A2["fa:fa-search Agent 2<br/><b>Extraction</b><br/><i>Mistral AI + Regex</i><br/><br/>• Regex first pass<br/>• Mistral contextual validation<br/>• Rule-based boost"]
+        A3["fa:fa-clock Agent 3<br/><b>End Detection</b><br/><i>OpenRouter / Gemini 2.0</i><br/><br/>• Intel type count ≥ 2<br/>• Message count thresholds<br/>• 50-msg safety cap"]
+    end
+
+    A1 --> A2 --> A3
+
+    A3 -- "Continue" --> REPLY["fa:fa-comment Send Reply<br/>to Scammer"]
+    A3 -- "Finalize" --> SUBMIT["fa:fa-share-square Submit Intel<br/>to GUVI + Keep Engaging"]
+
+    style A1 fill:#e94560,stroke:#1a1a2e,color:#fff
+    style A2 fill:#0f3460,stroke:#1a1a2e,color:#fff
+    style A3 fill:#533483,stroke:#1a1a2e,color:#fff
 ```
 
 ## Tech Stack
