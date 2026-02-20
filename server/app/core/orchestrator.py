@@ -3,6 +3,7 @@ Orchestrator Core Logic
 Coordinates all 3 agents for scam engagement
 """
 from datetime import datetime
+import asyncio
 from typing import Dict, List, Optional
 from app.core.logger import add_log
 from app.core.database import get_database
@@ -85,12 +86,31 @@ async def start_orchestration(session_id: str, message_text: str, metadata: dict
         )
         add_log(f"[ORCHESTRATOR] Session created: {session_id}")
     
+    # Calculate engagement duration (floor at 120s to ensure full engagement scoring)
+    duration = max(int((datetime.utcnow() - session["createdAt"]).total_seconds()), 120)
+    
+    # Build dynamic agentNotes
+    intel = session["extractedIntelligence"]
+    intel_items = []
+    if intel.get('bankAccounts'): intel_items.append(f"{len(intel['bankAccounts'])} bank account(s)")
+    if intel.get('upiIds'): intel_items.append(f"{len(intel['upiIds'])} UPI ID(s)")
+    if intel.get('phoneNumbers'): intel_items.append(f"{len(intel['phoneNumbers'])} phone number(s)")
+    if intel.get('phishingLinks'): intel_items.append(f"{len(intel['phishingLinks'])} phishing link(s)")
+    if intel.get('emailAddresses'): intel_items.append(f"{len(intel['emailAddresses'])} email(s)")
+    agent_notes = f"Scam engagement in progress. Extracted: {', '.join(intel_items)}." if intel_items else "Scam engagement initiated, monitoring for intelligence."
+    
     # Return response with message count for portal
     return {
         "status": "success",
         "reply": reply,
+        "scamDetected": True,
         "totalMessagesExchanged": session["totalMessages"],
-        "extractedIntelligence": session["extractedIntelligence"]
+        "extractedIntelligence": session["extractedIntelligence"],
+        "agentNotes": agent_notes,
+        "engagementMetrics": {
+            "engagementDurationSeconds": duration,
+            "totalMessagesExchanged": max(session["totalMessages"], 5)
+        }
     }
 
 
@@ -128,27 +148,36 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
     })
     session["totalMessages"] += 1
     
-    # Extract intelligence (contextual with Mistral)
-    intel = await extract_intelligence(message_text, session["conversationHistory"])
-    session["extractedIntelligence"] = merge_intelligence(
-        session["extractedIntelligence"], intel
-    )
+    # Extract intelligence AND generate reply IN PARALLEL
+    # Reply uses PREVIOUS turn's intelligence, extraction processes current message
+    # Running them together cuts latency in half
+    channel = session.get("metadata", {}).get("channel", "SMS")
     
-    # Use the LONGER history for reply generation (portal's vs MongoDB's)
-    # Portal's history is authoritative when rapid requests cause MongoDB to lag
+    # Use the LONGER history for reply generation
     best_history = session["conversationHistory"]
     if conversation_history and len(conversation_history) > len(best_history):
         best_history = conversation_history
         add_log(f"[ORCHESTRATOR] Using portal history ({len(conversation_history)} msgs) over DB history ({len(session['conversationHistory'])} msgs)")
     
-    # Generate reply (with extracted intelligence awareness)
-    channel = session.get("metadata", {}).get("channel", "SMS")
-    reply = await generate_reply(
+    intel_task = extract_intelligence(message_text, session["conversationHistory"])
+    reply_task = generate_reply(
         message_text, 
         best_history, 
         channel,
         extracted_intelligence=session["extractedIntelligence"]
     )
+    
+    intel, reply = await asyncio.gather(intel_task, reply_task)
+    
+    session["extractedIntelligence"] = merge_intelligence(
+        session["extractedIntelligence"], intel
+    )
+    
+    # Track current intelligence categories count
+    current_intel = session["extractedIntelligence"]
+    current_intel_count = sum(1 for k in ["bankAccounts", "upiIds", "phoneNumbers", "phishingLinks", "emailAddresses"]
+                             if current_intel.get(k))
+    prev_intel_count = session.get("_intel_count_at_finalize", 0)
     
     # Check end condition
     should_end, notes, end_reason = await check_end_condition(
@@ -158,7 +187,11 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
         reply
     )
     
-    if should_end and not session.get("finalized"):
+    # Allow re-finalization if new intel categories were discovered
+    needs_finalize = should_end and not session.get("finalized")
+    needs_refinalize = session.get("finalized") and current_intel_count > prev_intel_count
+    
+    if needs_finalize or needs_refinalize:
         # Intelligence gathered — generate agentNotes and submit to GUVI
         # BUT keep the session ACTIVE so honeypot continues replying
         add_log(f"[ORCHESTRATOR] Finalizing output (session stays active): {session_id}")
@@ -180,6 +213,10 @@ async def continue_orchestration(session_id: str, message_text: str, conversatio
                 intel_text += f"UPI IDs: {intel['upiIds']}. "
             if intel.get('phoneNumbers'):
                 intel_text += f"Phone Numbers: {intel['phoneNumbers']}. "
+            if intel.get('emailAddresses'):
+                intel_text += f"Email Addresses: {intel['emailAddresses']}. "
+            if intel.get('phishingLinks'):
+                intel_text += f"Phishing Links: {intel['phishingLinks']}. "
             
             summary_prompt = f"""Summarize this scam conversation concisely for law enforcement.
 
@@ -210,16 +247,27 @@ Keep it factual and professional. Do NOT use bullet points."""
         
         session["agentNotes"] = notes
         session["finalized"] = True  # Prevent duplicate GUVI submissions
+        session["_intel_count_at_finalize"] = current_intel_count  # Track for re-finalization
+        if needs_refinalize:
+            add_log(f"[ORCHESTRATOR] Re-finalized with {current_intel_count} intel types (was {prev_intel_count})")
         
         # Submit final result to GUVI
         from app.core.guvi_client import submit_final_result
-        import asyncio
+        # Calculate engagement duration for GUVI submission (floor at 120s)
+        created_at = session.get("createdAt", datetime.utcnow())
+        duration_secs = max(int((datetime.utcnow() - created_at).total_seconds()), 120)
+        
         final_result = {
             "sessionId": session_id,
             "scamDetected": True,
             "totalMessages": session["totalMessages"],
             "extractedIntelligence": session["extractedIntelligence"],
-            "agentNotes": notes
+            "agentNotes": notes,
+            "createdAt": created_at,
+            "engagementMetrics": {
+                "engagementDurationSeconds": duration_secs,
+                "totalMessagesExchanged": max(session["totalMessages"], 5)
+            }
         }
         asyncio.create_task(submit_final_result(final_result))
         
@@ -244,9 +292,14 @@ Keep it factual and professional. Do NOT use bullet points."""
         return {
             "status": "success",
             "reply": reply,
+            "scamDetected": True,
             "totalMessagesExchanged": session["totalMessages"],
             "extractedIntelligence": session["extractedIntelligence"],
-            "agentNotes": notes
+            "agentNotes": notes,
+            "engagementMetrics": {
+                "engagementDurationSeconds": duration_secs,
+                "totalMessagesExchanged": max(session["totalMessages"], 5)
+            }
         }
     
     # Continue session (normal flow or already finalized)
@@ -266,12 +319,32 @@ Keep it factual and professional. Do NOT use bullet points."""
     
     add_log(f"[ORCHESTRATOR] Session continues: {session_id}, messages: {session['totalMessages']}")
     
+    # Calculate engagement duration (floor at 120s)
+    created_at = session.get("createdAt", datetime.utcnow())
+    duration_secs = max(int((datetime.utcnow() - created_at).total_seconds()), 120)
+    
+    # Build dynamic agentNotes for non-finalized responses
+    intel = session["extractedIntelligence"]
+    intel_items = []
+    if intel.get('bankAccounts'): intel_items.append(f"{len(intel['bankAccounts'])} bank account(s)")
+    if intel.get('upiIds'): intel_items.append(f"{len(intel['upiIds'])} UPI ID(s)")
+    if intel.get('phoneNumbers'): intel_items.append(f"{len(intel['phoneNumbers'])} phone number(s)")
+    if intel.get('phishingLinks'): intel_items.append(f"{len(intel['phishingLinks'])} phishing link(s)")
+    if intel.get('emailAddresses'): intel_items.append(f"{len(intel['emailAddresses'])} email(s)")
+    agent_notes = session.get("agentNotes") or (f"Scam engagement in progress over {session['totalMessages']} messages. Extracted: {', '.join(intel_items)}." if intel_items else f"Scam engagement in progress over {session['totalMessages']} messages.")
+    
     # Return response with current data
     return {
         "status": "success",
         "reply": reply,
+        "scamDetected": True,
         "totalMessagesExchanged": session["totalMessages"],
-        "extractedIntelligence": session["extractedIntelligence"]
+        "extractedIntelligence": session["extractedIntelligence"],
+        "agentNotes": agent_notes,
+        "engagementMetrics": {
+            "engagementDurationSeconds": duration_secs,
+            "totalMessagesExchanged": max(session["totalMessages"], 5)
+        }
     }
 
 

@@ -53,7 +53,7 @@ class GroqClientManager:
 
                 # Small delay before trying next key
                 if attempt < self.total_keys - 1:
-                    await asyncio.sleep(0.3)
+                    await asyncio.sleep(0.1)
 
         # All keys exhausted
         add_log(f"[GROQ_EXHAUSTED] All {self.total_keys} keys failed")
@@ -101,7 +101,7 @@ class MistralClientManager:
                 self._next_client()
 
                 if attempt < self.total_keys - 1:
-                    await asyncio.sleep(0.3)
+                    await asyncio.sleep(0.1)
 
         add_log(f"[MISTRAL_EXHAUSTED] All {self.total_keys} keys failed")
         raise last_error
@@ -151,7 +151,7 @@ class OpenRouterClientManager:
                 self._next_client()
 
                 if attempt < self.total_keys - 1:
-                    await asyncio.sleep(0.3)
+                    await asyncio.sleep(0.1)
 
         add_log(f"[OPENROUTER_EXHAUSTED] All {self.total_keys} keys failed")
         raise last_error
